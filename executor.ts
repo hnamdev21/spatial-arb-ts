@@ -23,6 +23,21 @@ import BN from 'bn.js';
 import { getAssociatedTokenAddress } from '@solana/spl-token';
 import { connection, wallet, SKR_MINT, USDC_MINT, SKR_TOKEN, USDC_TOKEN, ORCA_POOL_ADDRESS } from './config';
 
+// --- UTILS: Sleep helper ---
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// --- UTILS: Get USDC Balance ---
+const getUsdcBalance = async (): Promise<number> => {
+    try {
+        const ata = await getAssociatedTokenAddress(new PublicKey(USDC_MINT), wallet.publicKey);
+        const bal = await connection.getTokenAccountBalance(ata);
+        return bal.value.uiAmount || 0;
+    } catch (e) {
+        console.warn("Could not fetch USDC balance:", e);
+        return 0;
+    }
+};
+
 // Custom Wallet Adapter
 const createWalletAdapter = () => {
   return {
@@ -198,27 +213,63 @@ const swapOrca = async (
 export const executeArbitrage = async (direction: 'A' | 'B', amountUSDC: string) => {
   console.log(`\n🚨 EXECUTING STRATEGY ${direction} with ${amountUSDC} USDC`);
 
+  // 1. Snapshot Initial Balance
+  const startUsdc = await getUsdcBalance();
+  console.log(`[Balance] Start: $${startUsdc.toFixed(6)} USDC`);
+
   try {
     if (direction === 'A') {
+      // Buy Raydium -> Sell Orca
       await swapRaydium(USDC_TOKEN, SKR_TOKEN, amountUSDC);
+
+      // Wait a bit for RPC to sync token account
+      await sleep(1000);
+
       const skrBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(new PublicKey(SKR_TOKEN.mint), wallet.publicKey)
       );
+
       console.log(`[Arbitrage] Acquired ${skrBalance.value.uiAmount} SKR. Selling on Orca...`);
+
       if (skrBalance.value.uiAmount && skrBalance.value.uiAmount > 0) {
         await swapOrca(SKR_TOKEN, USDC_TOKEN, skrBalance.value.uiAmount.toString());
       }
     } else {
+      // Buy Orca -> Sell Raydium
       await swapOrca(USDC_TOKEN, SKR_TOKEN, amountUSDC);
+
+      await sleep(1000);
+
       const skrBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(new PublicKey(SKR_TOKEN.mint), wallet.publicKey)
       );
+
       console.log(`[Arbitrage] Acquired ${skrBalance.value.uiAmount} SKR. Selling on Raydium...`);
+
       if (skrBalance.value.uiAmount && skrBalance.value.uiAmount > 0) {
         await swapRaydium(SKR_TOKEN, USDC_TOKEN, skrBalance.value.uiAmount.toString());
       }
     }
-    console.log(`✅ Strategy ${direction} Completed Successfully!`);
+
+    // 2. Snapshot Final Balance & Calculate Profit
+    await sleep(2000); // Wait for final tx to settle
+    const endUsdc = await getUsdcBalance();
+    const profit = endUsdc - startUsdc;
+    const profitPercent = (profit / parseFloat(amountUSDC)) * 100;
+
+    console.log(`\n=========================================`);
+    console.log(`✅ EXECUTION COMPLETED`);
+    console.log(`-----------------------------------------`);
+    console.log(`Start Balance: $${startUsdc.toFixed(6)}`);
+    console.log(`End Balance:   $${endUsdc.toFixed(6)}`);
+    console.log(`-----------------------------------------`);
+    if (profit > 0) {
+        console.log(`💰 PROFIT:      +$${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)`);
+    } else {
+        console.log(`📉 LOSS:        -$${Math.abs(profit).toFixed(6)} (${profitPercent.toFixed(2)}%)`);
+    }
+    console.log(`=========================================\n`);
+
   } catch (e) {
     console.error('❌ Execution Stopped:', e);
   }
