@@ -29,22 +29,13 @@ export const getOrcaQuote = async (inputAmount: string, isBuy: boolean): Promise
     const client = buildWhirlpoolClient(ctx);
     const poolPubkey = new PublicKey(ORCA_POOL_ADDRESS);
 
+    // Note: For high-speed WS, we will optimize this fetch in Phase 2
     const whirlpool = await client.getPool(poolPubkey);
 
     const inputToken = isBuy ? USDC_TOKEN : SKR_TOKEN;
     const outputToken = isBuy ? SKR_TOKEN : USDC_TOKEN;
 
-    // DEBUG LOGS
-    console.log(`\n[Orca Debug] Pool: ${ORCA_POOL_ADDRESS}`);
-    console.log(`[Orca Debug] Token A: ${whirlpool.getTokenAInfo().mint.toBase58()}`);
-    console.log(`[Orca Debug] Token B: ${whirlpool.getTokenBInfo().mint.toBase58()}`);
-    console.log(`[Orca Debug] Input: ${inputAmount} ${inputToken.symbol} (Decimals: ${inputToken.decimals})`);
-
     const amountAtomic = DecimalUtil.toBN(new Decimal(inputAmount), inputToken.decimals);
-
-    // DEBUG ATOMIC
-    console.log(`[Orca Debug] Input Atomic: ${amountAtomic.toString()}`);
-
     const slippage = Percentage.fromFraction(100, 10000);
 
     const quote = await swapQuoteByInputToken(
@@ -58,10 +49,6 @@ export const getOrcaQuote = async (inputAmount: string, isBuy: boolean): Promise
     );
 
     const estimatedOutDecimal = DecimalUtil.fromBN(quote.estimatedAmountOut, outputToken.decimals);
-
-    // DEBUG OUTPUT
-    console.log(`[Orca Debug] Est Output Atomic: ${quote.estimatedAmountOut.toString()}`);
-    console.log(`[Orca Debug] Est Output Decimal: ${estimatedOutDecimal.toString()} ${outputToken.symbol}`);
 
     const price = estimatedOutDecimal
       .div(new Decimal(inputAmount))
