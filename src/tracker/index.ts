@@ -4,6 +4,12 @@ import type { GetOrcaQuote } from '../quoter/orca';
 import type { GetRaydiumQuote } from '../quoter/raydium';
 import type { ExecuteArbitrageFn } from '../executor';
 
+export type BalanceSnapshot = {
+  usdc: number;
+  sol: number;
+  solPriceUsd: number;
+};
+
 export type TrackerParams = {
   connection: Connection;
   orcaPoolAddress: string;
@@ -14,8 +20,10 @@ export type TrackerParams = {
   amountToCheck: string;
   profitThreshold: number;
   quoteSymbol?: string;
+  baseSymbol?: string;
   getGasCostUsd: () => Promise<number>;
   minProfitPercent: number;
+  getBalance: () => Promise<BalanceSnapshot>;
 };
 
 type PriceData = {
@@ -23,6 +31,201 @@ type PriceData = {
   raydium: number;
   lastUpdate: number;
 };
+
+type DisplayState = {
+  minProfitPercent: number;
+  minProfitThreshold: number;
+  gasCostUsd: number;
+  amountToCheck: string;
+  quoteSymbol: string;
+  baseSymbol: string;
+  orcaPairPrice: string | null;
+  raydiumPairPrice: string | null;
+  startOrcaPairPrice: number | null;
+  startRaydiumPairPrice: number | null;
+  netProfitA: number | null;
+  netProfitB: number | null;
+  outputLeg2A: string | null;
+  outputLeg2B: string | null;
+  recommendVolume: number | null;
+  startOutputA: number | null;
+  startOutputB: number | null;
+  usdc: number;
+  sol: number;
+  solPriceUsd: number;
+  startUsdc: number | null;
+  startSol: number | null;
+  startTotalValue: number | null;
+  lastEvalTime: number;
+};
+
+function formatVsStart(current: number, start: number): string {
+  if (start === 0) return '';
+  const pct = ((current - start) / start) * 100;
+  if (pct > 0) return ` (start $${start.toFixed(4)}, +${pct.toFixed(2)}%)`;
+  if (pct < 0) return ` (start $${start.toFixed(4)}, ${pct.toFixed(2)}%)`;
+  return ` (start $${start.toFixed(4)}, unchanged)`;
+}
+
+function render(state: DisplayState): void {
+  const now = new Date();
+  const lastEvalAgo =
+    state.lastEvalTime > 0
+      ? `${Math.round((Date.now() - state.lastEvalTime) / 1000)}s ago`
+      : '';
+
+  console.clear();
+  console.log(
+    `--- 🛰 Spatial Arbitrage (Net Profit > ${state.minProfitPercent}% ≈ $${state.minProfitThreshold.toFixed(2)}, Gas ≈ $${state.gasCostUsd.toFixed(2)}) ---`
+  );
+  console.log(
+    `Time: ${now.toISOString()}${lastEvalAgo ? `  |  Last eval: ${lastEvalAgo}` : ''}`
+  );
+  console.log(`Input Leg 1: ${state.amountToCheck} ${state.quoteSymbol}`);
+  if (state.orcaPairPrice !== null || state.raydiumPairPrice !== null) {
+    const orcaNum =
+      state.orcaPairPrice !== null ? parseFloat(state.orcaPairPrice) : null;
+    const rayNum =
+      state.raydiumPairPrice !== null
+        ? parseFloat(state.raydiumPairPrice)
+        : null;
+    const orcaUsdcPerBase =
+      orcaNum !== null && orcaNum > 0 ? 1 / orcaNum : null;
+    const rayUsdcPerBase = rayNum !== null && rayNum > 0 ? 1 / rayNum : null;
+    const orcaPct =
+      state.startOrcaPairPrice != null &&
+      orcaNum !== null &&
+      state.startOrcaPairPrice > 0
+        ? (
+            ((1 / orcaNum - 1 / state.startOrcaPairPrice) /
+              (1 / state.startOrcaPairPrice)) *
+            100
+          ).toFixed(2) + '%'
+        : '—';
+    const rayPct =
+      state.startRaydiumPairPrice != null &&
+      rayNum !== null &&
+      state.startRaydiumPairPrice > 0
+        ? (
+            ((1 / rayNum - 1 / state.startRaydiumPairPrice) /
+              (1 / state.startRaydiumPairPrice)) *
+            100
+          ).toFixed(2) + '%'
+        : '—';
+    const pairPriceLabel = `Pair price (1 ${state.baseSymbol} → ${state.quoteSymbol})`;
+    console.table([
+      {
+        DEX: 'Orca',
+        [pairPriceLabel]:
+          orcaUsdcPerBase !== null ? `$${orcaUsdcPerBase.toFixed(6)}` : '—',
+        '% changed': orcaPct,
+      },
+      {
+        DEX: 'Raydium',
+        [pairPriceLabel]:
+          rayUsdcPerBase !== null ? `$${rayUsdcPerBase.toFixed(6)}` : '—',
+        '% changed': rayPct,
+      },
+    ]);
+  }
+  console.log(`-----------------------------------------`);
+  if (state.netProfitA !== null || state.netProfitB !== null) {
+    const outA =
+      state.outputLeg2A !== null ? parseFloat(state.outputLeg2A) : null;
+    const outB =
+      state.outputLeg2B !== null ? parseFloat(state.outputLeg2B) : null;
+    const pctA =
+      state.startOutputA != null && outA !== null
+        ? (((outA - state.startOutputA) / state.startOutputA) * 100).toFixed(
+            2
+          ) + '%'
+        : '—';
+    const pctB =
+      state.startOutputB != null && outB !== null
+        ? (((outB - state.startOutputB) / state.startOutputB) * 100).toFixed(
+            2
+          ) + '%'
+        : '—';
+    const strategyRows: Array<{
+      Strategy: string;
+      Output: string;
+      Net: string;
+      '% changed': string;
+    }> = [];
+    if (state.netProfitA !== null && state.outputLeg2A !== null) {
+      strategyRows.push({
+        Strategy: 'A (Buy Ray → Sell Orca)',
+        Output: `$${Number(state.outputLeg2A).toFixed(4)}`,
+        Net: `$${state.netProfitA.toFixed(4)}`,
+        '% changed': pctA,
+      });
+    }
+    if (state.netProfitB !== null && state.outputLeg2B !== null) {
+      strategyRows.push({
+        Strategy: 'B (Buy Orca → Sell Ray)',
+        Output: `$${Number(state.outputLeg2B).toFixed(4)}`,
+        Net: `$${state.netProfitB.toFixed(4)}`,
+        '% changed': pctB,
+      });
+    }
+    if (strategyRows.length > 0) console.table(strategyRows);
+  }
+
+  console.log('Balance');
+  const usdcPct =
+    state.startUsdc != null && state.startUsdc !== 0
+      ? (((state.usdc - state.startUsdc) / state.startUsdc) * 100).toFixed(2) +
+        '%'
+      : '—';
+  const solPct =
+    state.startSol != null && state.startSol !== 0
+      ? (((state.sol - state.startSol) / state.startSol) * 100).toFixed(2) + '%'
+      : '—';
+  const usdcValue = state.usdc;
+  const solValue = state.sol * state.solPriceUsd;
+  const totalValue = usdcValue + solValue;
+  const totalPct =
+    state.startTotalValue != null && state.startTotalValue !== 0
+      ? (
+          ((totalValue - state.startTotalValue) / state.startTotalValue) *
+          100
+        ).toFixed(2) + '%'
+      : '—';
+  console.table([
+    {
+      Asset: state.quoteSymbol,
+      Balance: state.usdc.toFixed(4),
+      Value: `$${usdcValue.toFixed(2)}`,
+      '% changed': usdcPct,
+    },
+    {
+      Asset: 'SOL',
+      Balance: state.sol.toFixed(6),
+      Value: `$${solValue.toFixed(2)}`,
+      '% changed': solPct,
+    },
+    {
+      Asset: 'Total',
+      Balance: '—',
+      Value: `$${totalValue.toFixed(2)}`,
+      '% changed': totalPct,
+    },
+  ]);
+
+  console.log('Volume');
+  console.table([
+    { Volume: 'Input', Amount: `${state.amountToCheck} ${state.quoteSymbol}` },
+    {
+      Volume: 'Recommend',
+      Amount:
+        state.recommendVolume !== null
+          ? `$${state.recommendVolume.toFixed(2)}`
+          : '—',
+    },
+  ]);
+
+  console.log(`-----------------------------------------`);
+}
 
 export function startTracking(params: TrackerParams): void {
   const {
@@ -35,8 +238,10 @@ export function startTracking(params: TrackerParams): void {
     amountToCheck,
     profitThreshold,
     quoteSymbol = 'quote',
+    baseSymbol = 'BASE',
     getGasCostUsd,
     minProfitPercent,
+    getBalance,
   } = params;
 
   const market: PriceData = {
@@ -46,21 +251,39 @@ export function startTracking(params: TrackerParams): void {
   };
 
   let isSwapping = false;
+  let startOutputA: number | null = null;
+  let startOutputB: number | null = null;
+  let startOrcaPairPrice: number | null = null;
+  let startRaydiumPairPrice: number | null = null;
+  let startUsdc: number | null = null;
+  let startSol: number | null = null;
+  let startTotalValue: number | null = null;
+  let lastDisplayState: DisplayState | null = null;
 
   async function evaluateStrategies(): Promise<void> {
     if (isSwapping) return;
 
     const inputUsdc = parseFloat(amountToCheck);
-    const [gasCostUsd] = await Promise.all([getGasCostUsd()]);
+    const [gasCostUsd, balance] = await Promise.all([
+      getGasCostUsd(),
+      getBalance(),
+    ]);
+    if (startUsdc === null) startUsdc = balance.usdc;
+    if (startSol === null) startSol = balance.sol;
+    const totalValue = balance.usdc + balance.sol * balance.solPriceUsd;
+    if (startTotalValue === null) startTotalValue = totalValue;
     const minProfitThreshold = inputUsdc * (minProfitPercent / 100);
 
     let netProfitA: number | null = null;
     let netProfitB: number | null = null;
     let outputLeg2A: string | null = null;
     let outputLeg2B: string | null = null;
+    let orcaPairPrice: string | null = null;
+    let raydiumPairPrice: string | null = null;
 
     try {
       const rayBuy = await getRaydiumQuote(amountToCheck, true);
+      raydiumPairPrice = rayBuy.price;
       const orcaSellA = await getOrcaQuote(rayBuy.output, false);
       const outputA = parseFloat(orcaSellA.output);
       netProfitA = outputA - inputUsdc - gasCostUsd;
@@ -71,6 +294,7 @@ export function startTracking(params: TrackerParams): void {
 
     try {
       const orcaBuy = await getOrcaQuote(amountToCheck, true);
+      orcaPairPrice = orcaBuy.price;
       const raySellB = await getRaydiumQuote(orcaBuy.output, false);
       const outputB = parseFloat(raySellB.output);
       netProfitB = outputB - inputUsdc - gasCostUsd;
@@ -83,24 +307,55 @@ export function startTracking(params: TrackerParams): void {
     if (netProfitB !== null) market.raydium = parseFloat(outputLeg2B!);
     market.lastUpdate = Date.now();
 
-    console.clear();
-    console.log(
-      `--- 🛰 Spatial Arbitrage (Net Profit > ${minProfitPercent}% ≈ $${minProfitThreshold.toFixed(2)}, Gas ≈ $${gasCostUsd.toFixed(2)}) ---`
-    );
-    console.log(`Time: ${new Date().toISOString()}`);
-    console.log(`Input Leg 1: ${amountToCheck} ${quoteSymbol}`);
-    console.log(`-----------------------------------------`);
-    if (netProfitA !== null) {
-      console.log(
-        `Strategy A (Buy Ray → Sell Orca): Output $${outputLeg2A}, Net $${netProfitA.toFixed(4)}`
-      );
-    }
-    if (netProfitB !== null) {
-      console.log(
-        `Strategy B (Buy Orca → Sell Ray): Output $${outputLeg2B}, Net $${netProfitB.toFixed(4)}`
-      );
-    }
-    console.log(`-----------------------------------------`);
+    const outputA = outputLeg2A !== null ? parseFloat(outputLeg2A) : 0;
+    const outputB = outputLeg2B !== null ? parseFloat(outputLeg2B) : 0;
+    if (outputA > 0 && startOutputA === null) startOutputA = outputA;
+    if (outputB > 0 && startOutputB === null) startOutputB = outputB;
+    if (orcaPairPrice !== null && startOrcaPairPrice === null)
+      startOrcaPairPrice = parseFloat(orcaPairPrice);
+    if (raydiumPairPrice !== null && startRaydiumPairPrice === null)
+      startRaydiumPairPrice = parseFloat(raydiumPairPrice);
+
+    const grossA = outputA - inputUsdc;
+    const grossB = outputB - inputUsdc;
+    const recommendVolumeA =
+      grossA > 0 ? (gasCostUsd * inputUsdc) / grossA : null;
+    const recommendVolumeB =
+      grossB > 0 ? (gasCostUsd * inputUsdc) / grossB : null;
+    const recommendVolumes: number[] = [];
+    if (recommendVolumeA !== null) recommendVolumes.push(recommendVolumeA);
+    if (recommendVolumeB !== null) recommendVolumes.push(recommendVolumeB);
+    const recommendVolume =
+      recommendVolumes.length > 0 ? Math.min(...recommendVolumes) : null;
+
+    const displayState: DisplayState = {
+      minProfitPercent,
+      minProfitThreshold,
+      gasCostUsd,
+      amountToCheck,
+      quoteSymbol,
+      baseSymbol,
+      orcaPairPrice,
+      raydiumPairPrice,
+      startOrcaPairPrice,
+      startRaydiumPairPrice,
+      netProfitA,
+      netProfitB,
+      outputLeg2A,
+      outputLeg2B,
+      recommendVolume,
+      startOutputA,
+      startOutputB,
+      usdc: balance.usdc,
+      sol: balance.sol,
+      solPriceUsd: balance.solPriceUsd,
+      startUsdc,
+      startSol,
+      startTotalValue,
+      lastEvalTime: market.lastUpdate,
+    };
+    lastDisplayState = displayState;
+    render(displayState);
 
     const bestNet = Math.max(netProfitA ?? -Infinity, netProfitB ?? -Infinity);
     if (bestNet > minProfitThreshold) {
@@ -148,6 +403,9 @@ export function startTracking(params: TrackerParams): void {
     () => void updateRaydium(),
     'processed'
   );
+  setInterval(() => {
+    if (lastDisplayState) render(lastDisplayState);
+  }, 1000);
   void updateOrca();
   void updateRaydium();
 }

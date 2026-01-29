@@ -1,4 +1,7 @@
+import { getAssociatedTokenAddress } from '@solana/spl-token';
+import { PublicKey } from '@solana/web3.js';
 import { startTracking } from './tracker';
+import type { BalanceSnapshot } from './tracker';
 import { createOrcaQuoter, createRaydiumQuoter } from './quoter';
 import { executeArbitrage } from './executor';
 import { getGasEstSol } from './gas';
@@ -59,6 +62,26 @@ async function main(): Promise<void> {
     return gasEstSol * solPriceUsd;
   };
 
+  const getBalance = async (): Promise<BalanceSnapshot> => {
+    let usdc = 0;
+    try {
+      const ata = await getAssociatedTokenAddress(
+        new PublicKey(QUOTE_MINT),
+        wallet.publicKey
+      );
+      const bal = await connection.getTokenAccountBalance(ata);
+      usdc = bal.value.uiAmount ?? 0;
+    } catch {
+      // ignore
+    }
+    const [lamports, solPriceUsd] = await Promise.all([
+      connection.getBalance(wallet.publicKey),
+      getSolPriceUsd(),
+    ]);
+    const sol = lamports / 1e9;
+    return { usdc, sol, solPriceUsd };
+  };
+
   await startTracking({
     connection,
     orcaPoolAddress: ORCA_POOL_ADDRESS,
@@ -69,8 +92,10 @@ async function main(): Promise<void> {
     amountToCheck: AMOUNT_TO_CHECK,
     profitThreshold: PROFIT_THRESHOLD,
     quoteSymbol: QUOTE_TOKEN.symbol,
+    baseSymbol: BASE_TOKEN.symbol,
     getGasCostUsd,
     minProfitPercent: MIN_PROFIT_PERCENT,
+    getBalance,
   });
 
   setInterval(() => {}, 1000 * 60 * 60);
