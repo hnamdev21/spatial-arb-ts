@@ -1,3 +1,5 @@
 npm run format
 npm run lint:fix
 npm run build
+git add .
+git commit -m "format and lint" --no-verify
