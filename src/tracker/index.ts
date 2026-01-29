@@ -411,8 +411,6 @@ export function startTracking(params: TrackerParams): void {
   setInterval(() => {
     if (lastDisplayState) render(lastDisplayState);
   }, 1000);
-  const POLL_MS = 5_000;
-  setInterval(() => void updateOrca(), POLL_MS);
   void updateOrca();
   void updateRaydium();
 }
