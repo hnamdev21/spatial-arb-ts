@@ -65,6 +65,13 @@ export const ORCA_POOL_PUBKEY = toPublicKey(
   'ORCA_POOL_ADDRESS'
 );
 
+export const GAS_EST_SOL = Number(process.env.GAS_EST_SOL?.trim() || '0.005');
+export const SOL_PRICE_USD = Number(process.env.SOL_PRICE_USD?.trim() || '200');
+
+export const MIN_PROFIT_PERCENT = Number(
+  process.env.MIN_PROFIT_PERCENT?.trim() || '1'
+);
+
 function parseWalletPrivateKey(raw: string): Uint8Array {
   const trimmed = raw.trim();
   if (trimmed.startsWith('[')) {

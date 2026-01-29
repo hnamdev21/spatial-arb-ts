@@ -1,6 +1,8 @@
 import { startTracking } from './tracker';
 import { createOrcaQuoter, createRaydiumQuoter } from './quoter';
 import { executeArbitrage } from './executor';
+import { getGasEstSol } from './gas';
+import { getSolPriceUsd } from './price';
 import {
   connection,
   wallet,
@@ -9,6 +11,7 @@ import {
   BASE_TOKEN,
   QUOTE_TOKEN,
   ORCA_POOL_ADDRESS,
+  MIN_PROFIT_PERCENT,
 } from './config';
 
 const RAYDIUM_POOL_ID =
@@ -48,6 +51,14 @@ async function main(): Promise<void> {
       amountInQuote
     );
 
+  const getGasCostUsd = async (): Promise<number> => {
+    const [gasEstSol, solPriceUsd] = await Promise.all([
+      getGasEstSol({ connection }),
+      getSolPriceUsd(),
+    ]);
+    return gasEstSol * solPriceUsd;
+  };
+
   await startTracking({
     connection,
     orcaPoolAddress: ORCA_POOL_ADDRESS,
@@ -58,6 +69,8 @@ async function main(): Promise<void> {
     amountToCheck: AMOUNT_TO_CHECK,
     profitThreshold: PROFIT_THRESHOLD,
     quoteSymbol: QUOTE_TOKEN.symbol,
+    getGasCostUsd,
+    minProfitPercent: MIN_PROFIT_PERCENT,
   });
 
   setInterval(() => {}, 1000 * 60 * 60);

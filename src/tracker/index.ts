@@ -14,6 +14,8 @@ export type TrackerParams = {
   amountToCheck: string;
   profitThreshold: number;
   quoteSymbol?: string;
+  getGasCostUsd: () => Promise<number>;
+  minProfitPercent: number;
 };
 
 type PriceData = {
@@ -33,6 +35,8 @@ export function startTracking(params: TrackerParams): void {
     amountToCheck,
     profitThreshold,
     quoteSymbol = 'quote',
+    getGasCostUsd,
+    minProfitPercent,
   } = params;
 
   const market: PriceData = {
@@ -43,47 +47,82 @@ export function startTracking(params: TrackerParams): void {
 
   let isSwapping = false;
 
-  async function calculateSpread(): Promise<void> {
-    if (market.orca === 0 || market.raydium === 0) return;
+  async function evaluateStrategies(): Promise<void> {
+    if (isSwapping) return;
 
-    const spreadA = ((market.orca - market.raydium) / market.raydium) * 100;
-    const spreadB = ((market.raydium - market.orca) / market.orca) * 100;
+    const inputUsdc = parseFloat(amountToCheck);
+    const [gasCostUsd] = await Promise.all([getGasCostUsd()]);
+    const minProfitThreshold = inputUsdc * (minProfitPercent / 100);
+
+    let netProfitA: number | null = null;
+    let netProfitB: number | null = null;
+    let outputLeg2A: string | null = null;
+    let outputLeg2B: string | null = null;
+
+    try {
+      const rayBuy = await getRaydiumQuote(amountToCheck, true);
+      const orcaSellA = await getOrcaQuote(rayBuy.output, false);
+      const outputA = parseFloat(orcaSellA.output);
+      netProfitA = outputA - inputUsdc - gasCostUsd;
+      outputLeg2A = orcaSellA.output;
+    } catch {
+      // skip Strategy A on quote failure
+    }
+
+    try {
+      const orcaBuy = await getOrcaQuote(amountToCheck, true);
+      const raySellB = await getRaydiumQuote(orcaBuy.output, false);
+      const outputB = parseFloat(raySellB.output);
+      netProfitB = outputB - inputUsdc - gasCostUsd;
+      outputLeg2B = raySellB.output;
+    } catch {
+      // skip Strategy B on quote failure
+    }
+
+    if (netProfitA !== null) market.orca = parseFloat(outputLeg2A!);
+    if (netProfitB !== null) market.raydium = parseFloat(outputLeg2B!);
+    market.lastUpdate = Date.now();
 
     console.clear();
     console.log(
-      `--- 🛰 Spatial Arbitrage Tracker (Executing > ${profitThreshold}%) ---`
+      `--- 🛰 Spatial Arbitrage (Net Profit > ${minProfitPercent}% ≈ $${minProfitThreshold.toFixed(2)}, Gas ≈ $${gasCostUsd.toFixed(2)}) ---`
     );
     console.log(`Time: ${new Date().toISOString()}`);
-    console.log(`Prices for ${amountToCheck} ${quoteSymbol}:`);
-    console.log(`Orca:    $${market.orca.toFixed(6)}`);
-    console.log(`Raydium: $${market.raydium.toFixed(6)}`);
+    console.log(`Input Leg 1: ${amountToCheck} ${quoteSymbol}`);
     console.log(`-----------------------------------------`);
-    console.log(`Strategy A (Buy Ray -> Sell Orca): ${spreadA.toFixed(4)}%`);
-    console.log(`Strategy B (Buy Orca -> Sell Ray): ${spreadB.toFixed(4)}%`);
-
-    if (isSwapping) {
-      console.log(`\n⚠️ SWAP IN PROGRESS... Pausing tracker.`);
-      return;
+    if (netProfitA !== null) {
+      console.log(
+        `Strategy A (Buy Ray → Sell Orca): Output $${outputLeg2A}, Net $${netProfitA.toFixed(4)}`
+      );
     }
+    if (netProfitB !== null) {
+      console.log(
+        `Strategy B (Buy Orca → Sell Ray): Output $${outputLeg2B}, Net $${netProfitB.toFixed(4)}`
+      );
+    }
+    console.log(`-----------------------------------------`);
 
-    if (spreadA > profitThreshold) {
-      isSwapping = true;
-      await executeArbitrage('A', amountToCheck);
-      isSwapping = false;
-    } else if (spreadB > profitThreshold) {
-      isSwapping = true;
-      await executeArbitrage('B', amountToCheck);
-      isSwapping = false;
+    const bestNet = Math.max(netProfitA ?? -Infinity, netProfitB ?? -Infinity);
+    if (bestNet > minProfitThreshold) {
+      const preferB =
+        netProfitB !== null &&
+        (netProfitA === null || netProfitB >= netProfitA);
+      if (preferB) {
+        isSwapping = true;
+        await executeArbitrage('B', amountToCheck);
+        isSwapping = false;
+      } else if (netProfitA !== null) {
+        isSwapping = true;
+        await executeArbitrage('A', amountToCheck);
+        isSwapping = false;
+      }
     }
   }
 
   async function updateOrca(): Promise<void> {
     if (isSwapping) return;
     try {
-      const q = await getOrcaQuote(amountToCheck, false);
-      market.orca = parseFloat(q.price);
-      market.lastUpdate = Date.now();
-      await calculateSpread();
+      await evaluateStrategies();
     } catch (e) {
       console.error(e);
     }
@@ -92,10 +131,7 @@ export function startTracking(params: TrackerParams): void {
   async function updateRaydium(): Promise<void> {
     if (isSwapping) return;
     try {
-      const q = await getRaydiumQuote(amountToCheck, false);
-      market.raydium = parseFloat(q.price);
-      market.lastUpdate = Date.now();
-      await calculateSpread();
+      await evaluateStrategies();
     } catch (e) {
       console.error(e);
     }
