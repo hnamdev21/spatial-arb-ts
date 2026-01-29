@@ -401,16 +401,18 @@ export function startTracking(params: TrackerParams): void {
   connection.onAccountChange(
     new PublicKey(orcaPoolAddress),
     () => void updateOrca(),
-    'processed'
+    { commitment: 'processed' }
   );
   connection.onAccountChange(
     new PublicKey(raydiumPoolId),
     () => void updateRaydium(),
-    'processed'
+    { commitment: 'processed' }
   );
   setInterval(() => {
     if (lastDisplayState) render(lastDisplayState);
   }, 1000);
+  const POLL_MS = 5_000;
+  setInterval(() => void updateOrca(), POLL_MS);
   void updateOrca();
   void updateRaydium();
 }
