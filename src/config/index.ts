@@ -60,7 +60,10 @@ export const ORCA_POOL_ADDRESS =
   process.env.ORCA_POOL_ADDRESS?.trim() ||
   'VY1ZQXjqBwvuWgVfTfhqanJe96GGoQrX7xZZDrWPGiT';
 
-export const ORCA_POOL_PUBKEY = toPublicKey(ORCA_POOL_ADDRESS, 'ORCA_POOL_ADDRESS');
+export const ORCA_POOL_PUBKEY = toPublicKey(
+  ORCA_POOL_ADDRESS,
+  'ORCA_POOL_ADDRESS'
+);
 
 function parseWalletPrivateKey(raw: string): Uint8Array {
   const trimmed = raw.trim();

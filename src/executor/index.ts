@@ -250,9 +250,7 @@ export async function executeArbitrage(
   );
 
   const startQuote = await getQuoteBalance(connection, wallet, quoteMint);
-  console.log(
-    `[Balance] Start: ${startQuote.toFixed(6)} ${quoteToken.symbol}`
-  );
+  console.log(`[Balance] Start: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
 
   try {
     if (direction === 'A') {
@@ -319,9 +317,7 @@ export async function executeArbitrage(
     console.log(`\n=========================================`);
     console.log(`✅ EXECUTION COMPLETED`);
     console.log(`-----------------------------------------`);
-    console.log(
-      `Start Balance: ${startQuote.toFixed(6)} ${quoteToken.symbol}`
-    );
+    console.log(`Start Balance: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
     console.log(`End Balance:   ${endQuote.toFixed(6)} ${quoteToken.symbol}`);
     console.log(`-----------------------------------------`);
     if (profit > 0) {
