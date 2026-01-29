@@ -17,6 +17,7 @@ Spatial arbitrage bot that tracks price spreads between **Orca** and **Raydium**
 | Blockchain  | Solana                                                                                                                |
 | DEX / Quote | Orca (Whirlpools), Raydium (CLMM)                                                                                     |
 | Key libs    | `@solana/web3.js`, `@orca-so/whirlpools-sdk`, `@raydium-io/raydium-sdk-v2`, `@solana/spl-token`, `decimal.js`, `bs58` |
+| Backend API | Express (Phase 1), Mongoose → MongoDB Atlas / local                                                                   |
 | Tooling     | ESLint, Prettier, Husky, Nodemon                                                                                      |
 | Infra       | Docker Compose (MongoDB, mongo-express)                                                                               |
 
@@ -26,7 +27,7 @@ Spatial arbitrage bot that tracks price spreads between **Orca** and **Raydium**
 
 ```
 src/
-├── index.ts              # Entry: config + core (quoters, gas, price, executor, tracker)
+├── index.ts              # Entry: bot (config + core tracker)
 ├── config/
 │   └── index.ts          # Env, connection, wallet, tokens, pool addresses, profit/gas defaults
 ├── core/                 # Arbitrage engine: types, quoters, gas, price, executor, tracker
@@ -44,13 +45,22 @@ src/
 │   │   └── index.ts      # Swap execution (Raydium + Orca) and arbitrage flow
 │   └── tracker/
 │       └── index.ts      # Account subscription, quotes, net profit, balance, execution trigger
-└── models/               # Mongoose schemas (MongoDB) for users, strategies, transactions, etc.
+├── server/               # Express API (Phase 1)
+│   ├── index.ts          # Start server + Mongoose connect
+│   ├── app.ts            # Express app (middleware, routes)
+│   ├── db.ts             # connectMongo / disconnectMongo
+│   └── routes/
+│       └── health.ts     # GET /health
+├── services/
+│   └── EncryptionService.ts   # AES-256-GCM for wallet private keys (ENCRYPTION_KEY)
+└── models/               # Mongoose schemas (MongoDB)
     ├── User.ts
+    ├── Wallet.ts         # userId, publicKey, encryptedPrivateKey
     ├── Strategy.ts
     ├── Transaction.ts
     ├── LeaderboardStat.ts
     ├── EquitySnapshot.ts
-    └── Payment.ts
+    └── Payment.ts        # amount, currency, gateway, status, transactionDetails
 ```
 
 ---
@@ -227,14 +237,15 @@ src/
 
 **Purpose:** Mongoose schemas for MongoDB. Used by app features that persist users, strategies, transactions, leaderboard, and equity snapshots (Docker Compose: MongoDB + mongo-express).
 
-| Model             | Description                                                                   |
-| ----------------- | ----------------------------------------------------------------------------- |
-| `User`            | Discord id, username, avatar, email; subscription (plan, expiresAt, Stripe)   |
-| `Strategy`        | User/wallet ref, pair (base/quote mints, Orca/Raydium pools), config, stats   |
-| `Transaction`     | User/strategy ref, txHash, status; display, performance, details, financials  |
-| `LeaderboardStat` | User ref, period; totalProfitUsd, winRate, totalTrades, totalVolumeUsd, roi   |
-| `EquitySnapshot`  | Timeseries: metadata (user/strategy/pair), totalValueUsd, cumulativeProfitUsd |
-| `Payment`         | (Reserved for payment/subscription records)                                   |
+| Model             | Description                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| `User`            | Discord id, username, avatar, email, roles; subscription (plan, expiresAt, stripeCustomerId, autoRenew) |
+| `Strategy`        | User/wallet ref, pair (base/quote mints, Orca/Raydium pools), config, stats                             |
+| `Transaction`     | User/strategy ref, txHash, status; display, performance, details, financials                            |
+| `LeaderboardStat` | User ref, period; totalProfitUsd, winRate, totalTrades, totalVolumeUsd, roi                             |
+| `EquitySnapshot`  | Timeseries: metadata (user/strategy/pair), totalValueUsd, cumulativeProfitUsd                           |
+| `Wallet`          | User ref, publicKey, encryptedPrivateKey (AES-256)                                                      |
+| `Payment`         | User ref, amount, currency, gateway (STRIPE/CRYPTO), status, transactionDetails                         |
 
 ---
 
@@ -246,23 +257,42 @@ src/
 
 ---
 
+### 10. API Server – `src/server/` (Phase 1)
+
+**Purpose:** Express API and Mongoose connection for multi-tenant foundation. Used for health checks, future auth, and strategy/wallet APIs.
+
+- **`server/index.ts`** – Connects to MongoDB via `MONGODB_URI`, then starts Express on `PORT`.
+- **`server/app.ts`** – Express app with `express.json()`, `GET /health` (returns `{ status, mongo, timestamp }`).
+- **`server/db.ts`** – `connectMongo()`, `disconnectMongo()`.
+- **`services/EncryptionService`** – AES-256-GCM helper for encrypting/decrypting wallet private keys. Requires `ENCRYPTION_KEY` (32-byte hex or base64). Use `getEncryptionService()` for default instance.
+
+**Run API:** `npm run start:server` or `npm run dev:server` (with Nodemon).
+
+---
+
 ## Scripts
 
-| Command                | Description                          |
-| ---------------------- | ------------------------------------ |
-| `npm start`            | Run app with `ts-node src/index.ts`  |
-| `npm run dev`          | Run with Nodemon (restart on change) |
-| `npm run build`        | Compile TypeScript to `dist/`        |
-| `npm run format`       | Format with Prettier                 |
-| `npm run format:check` | Check formatting                     |
-| `npm run lint`         | Run ESLint                           |
-| `npm run lint:fix`     | ESLint with auto-fix                 |
-| `npm run prepare`      | Husky install (post-install)         |
+| Command                | Description                                |
+| ---------------------- | ------------------------------------------ |
+| `npm start`            | Run bot with `ts-node src/index.ts`        |
+| `npm run start:server` | Run API with `ts-node src/server/index.ts` |
+| `npm run dev`          | Bot with Nodemon (restart on change)       |
+| `npm run dev:server`   | API with Nodemon (restart on change)       |
+| `npm run build`        | Compile TypeScript to `dist/`              |
+| `npm run format`       | Format with Prettier                       |
+| `npm run format:check` | Check formatting                           |
+| `npm run lint`         | Run ESLint                                 |
+| `npm run lint:fix`     | ESLint with auto-fix                       |
+| `npm run prepare`      | Husky install (post-install)               |
 
 ---
 
 ## Environment Summary
 
-**Required:** `WALLET_PRIVATE_KEY`.
+Copy `.env.example` to `.env` and fill values.
 
-**Optional:** `RPC_URL`, `BASE_MINT`, `QUOTE_MINT`, `BASE_SYMBOL`, `QUOTE_SYMBOL`, `BASE_DECIMALS`, `QUOTE_DECIMALS`, `ORCA_POOL_ADDRESS`, `RAYDIUM_POOL_ID`, `AMOUNT_TO_CHECK`, `PROFIT_THRESHOLD`, `GAS_EST_SOL`, `SOL_PRICE_USD`, `MIN_PROFIT_PERCENT`, `JUPITER_API_KEY`. Legacy: `SKR_MINT`, `USDC_MINT`.
+**API (Phase 1):** `PORT`, `MONGODB_URI`, `ENCRYPTION_KEY` (required for wallet encryption).
+
+**Bot:** `WALLET_PRIVATE_KEY` (required for legacy single-wallet mode).
+
+**Optional (bot):** `RPC_URL`, `BASE_MINT`, `QUOTE_MINT`, `BASE_SYMBOL`, `QUOTE_SYMBOL`, `BASE_DECIMALS`, `QUOTE_DECIMALS`, `ORCA_POOL_ADDRESS`, `RAYDIUM_POOL_ID`, `AMOUNT_TO_CHECK`, `PROFIT_THRESHOLD`, `GAS_EST_SOL`, `SOL_PRICE_USD`, `MIN_PROFIT_PERCENT`, `JUPITER_API_KEY`. Legacy: `SKR_MINT`, `USDC_MINT`.

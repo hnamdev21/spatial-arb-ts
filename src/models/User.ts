@@ -5,6 +5,7 @@ const UserSchema = new mongoose.Schema({
   username: { type: String, required: true },
   avatar: { type: String },
   email: { type: String, unique: true, sparse: true },
+  roles: [{ type: String }],
 
   subscription: {
     plan: { type: String, enum: ['FREE', 'PRO', 'WHALE'], default: 'FREE' },

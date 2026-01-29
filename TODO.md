@@ -1,21 +1,21 @@
 # 🚀 Product Roadmap: Solana Spatial Arbitrage SaaS
 
-## Phase 1: Core Architecture & Database Design
+## Phase 1: Core Architecture & Database Design ✅
 
 _Focus: Transitioning from a single-user script to a secure multi-tenant foundation._
 
-- [ ] **Backend Repository Initialization**
-  - [ ] Set up a robust Node.js server framework (Express or NestJS).
-  - [ ] Configure Mongoose connection to MongoDB Atlas.
-- [ ] **Database Schema Implementation**
-  - [ ] **User Schema:** Store Discord ID, Username, Avatar, Roles, and **Payment Metadata** (`stripeCustomerId`, `autoRenew`).
-  - [ ] **Wallet Schema:** Implement `encryptedPrivateKey` (AES-256).
-  - [ ] **Strategy Schema:** Dynamic configuration model (replacing `config/index.ts`).
-  - [ ] **Payment Schema:** Track transaction history (`amount`, `currency`, `gateway`, `status`, `transactionDetails`).
-  - [ ] **Analytics Schema:** Time-series collection for Equity Curves.
-- [ ] **Security Module**
-  - [ ] Build `EncryptionService` helper class.
-  - [ ] Set up environment variables for Master Salt/Keys.
+- [x] **Backend Repository Initialization**
+  - [x] Set up a robust Node.js server framework (Express or NestJS).
+  - [x] Configure Mongoose connection to MongoDB Atlas.
+- [x] **Database Schema Implementation**
+  - [x] **User Schema:** Store Discord ID, Username, Avatar, Roles, and **Payment Metadata** (`stripeCustomerId`, `autoRenew`).
+  - [x] **Wallet Schema:** Implement `encryptedPrivateKey` (AES-256).
+  - [x] **Strategy Schema:** Dynamic configuration model (replacing `config/index.ts`).
+  - [x] **Payment Schema:** Track transaction history (`amount`, `currency`, `gateway`, `status`, `transactionDetails`).
+  - [x] **Analytics Schema:** Time-series collection for Equity Curves.
+- [x] **Security Module**
+  - [x] Build `EncryptionService` helper class.
+  - [x] Set up environment variables for Master Salt/Keys.
 
 ## Phase 2: Authentication & User Onboarding (Discord-First)
 
