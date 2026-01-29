@@ -62,18 +62,13 @@ type DisplayState = {
 
 export type TradeRecord = {
   txSignature: string;
+  status: 'SUCCESS' | 'FAILED';
+  strategy: 'A' | 'B';
+  orderLabel: string;
   inputVolume: string;
   netProfit: number;
   timestamp: string;
 };
-
-function formatVsStart(current: number, start: number): string {
-  if (start === 0) return '';
-  const pct = ((current - start) / start) * 100;
-  if (pct > 0) return ` (start $${start.toFixed(4)}, +${pct.toFixed(2)}%)`;
-  if (pct < 0) return ` (start $${start.toFixed(4)}, ${pct.toFixed(2)}%)`;
-  return ` (start $${start.toFixed(4)}, unchanged)`;
-}
 
 function render(state: DisplayState, trades: TradeRecord[]): void {
   const now = new Date();
@@ -88,15 +83,22 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
     `Time: ${now.toISOString()}${lastEvalAgo ? `  |  Last eval: ${lastEvalAgo}` : ''}`
   );
 
-  console.log('Fee');
+  console.log('Config');
   console.table([
-    { Fee: 'Min profit %', Value: `${state.minProfitPercent}%` },
-    { Fee: 'Min profit ($)', Value: `$${state.minProfitThreshold.toFixed(2)}` },
-    { Fee: 'Gas (USD)', Value: `$${state.gasCostUsd.toFixed(2)}` },
+    { Config: 'Min profit %', Value: `${state.minProfitPercent}%` },
     {
-      Fee: `SOL/${state.quoteSymbol}`,
+      Config: 'Min profit ($)',
+      Value: `$${state.minProfitThreshold.toFixed(2)}`,
+    },
+    {
+      Config: `SOL/${state.quoteSymbol}`,
       Value: `$${state.solPriceUsd.toFixed(4)}`,
     },
+  ]);
+
+  console.log('Fee');
+  console.table([
+    { Fee: 'Gas (USD)', Value: `$${state.gasCostUsd.toFixed(2)}` },
   ]);
 
   console.log('Balance');
@@ -257,12 +259,14 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
   }
 
   if (trades.length > 0) {
-    console.log('Total trade');
+    console.log('Transactions');
     const lastTrades = trades.slice(-10);
     const startNum = Math.max(1, trades.length - lastTrades.length + 1);
     const tradeRows = lastTrades.map((t, i) => ({
       '#': startNum + i,
-      Tx: t.txSignature.slice(0, 8) + '…' + t.txSignature.slice(-8),
+      Address: t.txSignature || '—',
+      Status: t.status,
+      Order: t.orderLabel,
       'Input volume': t.inputVolume,
       'Net profit': `$${t.netProfit.toFixed(4)}`,
       Time: t.timestamp,
@@ -411,16 +415,27 @@ export function startTracking(params: TrackerParams): void {
       const preferB =
         netProfitB !== null &&
         (netProfitA === null || netProfitB >= netProfitA);
-      const result = preferB
-        ? await executeArbitrage('B', amountToCheck)
+      const strategy: 'A' | 'B' | null = preferB
+        ? 'B'
         : netProfitA !== null
-          ? await executeArbitrage('A', amountToCheck)
+          ? 'A'
+          : null;
+      const result =
+        strategy !== null
+          ? await executeArbitrage(strategy, amountToCheck)
           : undefined;
-      if (result) {
+      if (strategy !== null) {
+        const orderLabel =
+          strategy === 'A'
+            ? 'A (Buy Ray → Sell Orca)'
+            : 'B (Buy Orca → Sell Ray)';
         completedTrades.push({
-          txSignature: result.txSignature,
+          txSignature: result?.txSignature ?? '',
+          status: result ? 'SUCCESS' : 'FAILED',
+          strategy,
+          orderLabel,
           inputVolume: `${amountToCheck} ${quoteSymbol}`,
-          netProfit: result.netProfit,
+          netProfit: result?.netProfit ?? 0,
           timestamp: new Date().toISOString(),
         });
         if (lastDisplayState) render(lastDisplayState, completedTrades);
