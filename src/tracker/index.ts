@@ -78,6 +78,7 @@ function render(state: DisplayState): void {
   console.log(
     `--- 🛰 Spatial Arbitrage (Net Profit > ${state.minProfitPercent}% ≈ $${state.minProfitThreshold.toFixed(2)}, Gas ≈ $${state.gasCostUsd.toFixed(2)}) ---`
   );
+  console.log(`SOL/${state.quoteSymbol}: $${state.solPriceUsd.toFixed(4)}`);
   console.log(
     `Time: ${now.toISOString()}${lastEvalAgo ? `  |  Last eval: ${lastEvalAgo}` : ''}`
   );
@@ -194,34 +195,38 @@ function render(state: DisplayState): void {
   console.table([
     {
       Asset: state.quoteSymbol,
-      Balance: state.usdc.toFixed(4),
+      Amount: state.usdc.toFixed(4),
       Value: `$${usdcValue.toFixed(2)}`,
       '% changed': usdcPct,
     },
     {
       Asset: 'SOL',
-      Balance: state.sol.toFixed(6),
+      Amount: state.sol.toFixed(6),
       Value: `$${solValue.toFixed(2)}`,
       '% changed': solPct,
     },
     {
       Asset: 'Total',
-      Balance: '—',
+      Amount: '—',
       Value: `$${totalValue.toFixed(2)}`,
       '% changed': totalPct,
     },
   ]);
 
   console.log('Volume');
+  const inputAmount = `${state.amountToCheck} ${state.quoteSymbol}`;
+  const inputValue = `$${parseFloat(state.amountToCheck).toFixed(2)}`;
+  const recommendAmount =
+    state.recommendVolume !== null
+      ? `${state.recommendVolume.toFixed(2)} ${state.quoteSymbol}`
+      : '—';
+  const recommendValue =
+    state.recommendVolume !== null
+      ? `$${state.recommendVolume.toFixed(2)}`
+      : '—';
   console.table([
-    { Volume: 'Input', Amount: `${state.amountToCheck} ${state.quoteSymbol}` },
-    {
-      Volume: 'Recommend',
-      Amount:
-        state.recommendVolume !== null
-          ? `$${state.recommendVolume.toFixed(2)}`
-          : '—',
-    },
+    { Volume: 'Input', Amount: inputAmount, Value: inputValue },
+    { Volume: 'Recommend', Amount: recommendAmount, Value: recommendValue },
   ]);
 
   console.log(`-----------------------------------------`);
