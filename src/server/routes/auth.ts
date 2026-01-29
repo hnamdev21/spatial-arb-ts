@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDiscord, getDiscordCallback } from '../controllers/authController';
+import { getDiscord, getDiscordCallback } from '../controllers/auth';
 
 const router = Router();
 router.get('/discord', getDiscord);

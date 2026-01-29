@@ -2,7 +2,7 @@ import type { Request, Response } from 'express';
 import { requireAuth } from '../middleware/auth';
 import type { UserDocument } from '../types/express';
 import { getWalletLimit } from '../constants/wallet';
-import * as walletService from '../services/walletService';
+import * as walletService from '../services/wallet';
 
 export async function create(req: Request, res: Response): Promise<void> {
   const user = req.user as UserDocument | undefined;

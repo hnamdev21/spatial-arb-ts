@@ -2,7 +2,7 @@ import passport from 'passport';
 import { Strategy as DiscordStrategy } from 'passport-discord';
 import { User } from '../models/User';
 import { authConfig } from './config/auth';
-import { ensureFirstWallet } from './services/walletService';
+import { ensureFirstWallet } from './services/wallet';
 
 if (authConfig.discord.clientID && authConfig.discord.clientSecret) {
   passport.use(

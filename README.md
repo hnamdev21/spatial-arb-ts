@@ -59,12 +59,12 @@ src/
 │   ├── types/
 │   │   └── express.d.ts  # Request.user (UserDocument)
 │   ├── controllers/      # Request/response only; call services
-│   │   ├── healthController.ts
-│   │   ├── authController.ts
-│   │   ├── userController.ts
-│   │   └── walletController.ts
+│   │   ├── health.ts
+│   │   ├── auth.ts
+│   │   ├── user.ts
+│   │   └── wallet.ts
 │   ├── services/         # Business logic (server-scoped)
-│   │   └── walletService.ts   # createWallet, listWallets, ensureFirstWallet
+│   │   └── wallet.ts   # createWallet, listWallets, ensureFirstWallet
 │   └── routes/           # Thin: mount controller handlers
 │       ├── health.ts     # GET /health
 │       ├── auth.ts       # GET /auth/discord, GET /auth/discord/callback

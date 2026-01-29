@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { createWithAuth, listWithAuth } from '../controllers/walletController';
+import { createWithAuth, listWithAuth } from '../controllers/wallet';
 
 const router = Router();
 router.post('/', createWithAuth);
