@@ -9,8 +9,8 @@ export type RaydiumQuote = Quote<'Raydium'>;
 export type RaydiumQuoterParams = {
   connection: Connection;
   wallet: Keypair;
-  skrMint: string;
-  usdcMint: string;
+  baseMint: string;
+  quoteMint: string;
 };
 
 export type GetRaydiumQuote = (
@@ -21,7 +21,7 @@ export type GetRaydiumQuote = (
 export function createRaydiumQuoter(
   params: RaydiumQuoterParams
 ): GetRaydiumQuote {
-  const { connection, wallet, skrMint, usdcMint } = params;
+  const { connection, wallet, baseMint, quoteMint } = params;
 
   let raydiumInstance: Raydium | null = null;
 
@@ -39,8 +39,8 @@ export function createRaydiumQuoter(
       const raydium = await getRaydium();
 
       const data = await raydium.api.fetchPoolByMints({
-        mint1: usdcMint,
-        mint2: skrMint,
+        mint1: quoteMint,
+        mint2: baseMint,
       });
       const pools =
         (data as { data?: unknown[] }).data ??
@@ -55,11 +55,11 @@ export function createRaydiumQuoter(
         }[]
       ).filter((p) => p.programId === CLMM_PROGRAM_ID.toBase58());
       if (clmmPools.length === 0)
-        throw new Error('No CLMM pool found for SKR/USDC');
+        throw new Error('No CLMM pool found for base/quote pair');
 
       clmmPools.sort((a, b) => b.tvl - a.tvl);
       const pool = clmmPools[0];
-      if (!pool) throw new Error('No CLMM pool found for SKR/USDC');
+      if (!pool) throw new Error('No CLMM pool found for base/quote pair');
 
       const rpcData = await raydium.clmm.getRpcClmmPoolInfo({
         poolId: pool.id,
@@ -67,10 +67,10 @@ export function createRaydiumQuoter(
 
       let priceDecimal = new Decimal(rpcData.currentPrice);
 
-      const baseMint = pool.mintA.address;
-      const inputMint = isBuy ? usdcMint : skrMint;
+      const poolBaseMint = pool.mintA.address;
+      const inputMint = isBuy ? quoteMint : baseMint;
 
-      if (inputMint !== baseMint) {
+      if (inputMint !== poolBaseMint) {
         priceDecimal = new Decimal(1).div(priceDecimal);
       }
 

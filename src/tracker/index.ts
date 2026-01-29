@@ -13,6 +13,7 @@ export type TrackerParams = {
   executeArbitrage: ExecuteArbitrageFn;
   amountToCheck: string;
   profitThreshold: number;
+  quoteSymbol?: string;
 };
 
 type PriceData = {
@@ -31,6 +32,7 @@ export function startTracking(params: TrackerParams): void {
     executeArbitrage,
     amountToCheck,
     profitThreshold,
+    quoteSymbol = 'quote',
   } = params;
 
   const market: PriceData = {
@@ -52,7 +54,7 @@ export function startTracking(params: TrackerParams): void {
       `--- 🛰 Spatial Arbitrage Tracker (Executing > ${profitThreshold}%) ---`
     );
     console.log(`Time: ${new Date().toISOString()}`);
-    console.log(`Prices for ${amountToCheck} USDC:`);
+    console.log(`Prices for ${amountToCheck} ${quoteSymbol}:`);
     console.log(`Orca:    $${market.orca.toFixed(6)}`);
     console.log(`Raydium: $${market.raydium.toFixed(6)}`);
     console.log(`-----------------------------------------`);

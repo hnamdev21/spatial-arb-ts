@@ -16,8 +16,8 @@ export type OrcaQuoterParams = {
   connection: Connection;
   wallet: Keypair;
   poolAddress: string;
-  skrToken: TokenInfo;
-  usdcToken: TokenInfo;
+  baseToken: TokenInfo;
+  quoteToken: TokenInfo;
 };
 
 export type GetOrcaQuote = (
@@ -26,7 +26,7 @@ export type GetOrcaQuote = (
 ) => Promise<OrcaQuote>;
 
 export function createOrcaQuoter(params: OrcaQuoterParams): GetOrcaQuote {
-  const { connection, wallet, poolAddress, skrToken, usdcToken } = params;
+  const { connection, wallet, poolAddress, baseToken, quoteToken } = params;
 
   let whirlpoolContext: WhirlpoolContext | null = null;
 
@@ -50,8 +50,8 @@ export function createOrcaQuoter(params: OrcaQuoterParams): GetOrcaQuote {
 
       const whirlpool = await client.getPool(poolPubkey);
 
-      const inputToken = isBuy ? usdcToken : skrToken;
-      const outputToken = isBuy ? skrToken : usdcToken;
+      const inputToken = isBuy ? quoteToken : baseToken;
+      const outputToken = isBuy ? baseToken : quoteToken;
 
       const amountAtomic = DecimalUtil.toBN(
         new Decimal(inputAmount),

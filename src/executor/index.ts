@@ -23,29 +23,29 @@ import type { TokenInfo } from '../types';
 export type ExecutorParams = {
   connection: Connection;
   wallet: Keypair;
-  usdcMint: string;
-  skrMint: string;
-  skrToken: TokenInfo;
-  usdcToken: TokenInfo;
+  quoteMint: string;
+  baseMint: string;
+  quoteToken: TokenInfo;
+  baseToken: TokenInfo;
   orcaPoolAddress: string;
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function getUsdcBalance(
+async function getQuoteBalance(
   connection: Connection,
   wallet: Keypair,
-  usdcMint: string
+  quoteMint: string
 ): Promise<number> {
   try {
     const ata = await getAssociatedTokenAddress(
-      new PublicKey(usdcMint),
+      new PublicKey(quoteMint),
       wallet.publicKey
     );
     const bal = await connection.getTokenAccountBalance(ata);
     return bal.value.uiAmount ?? 0;
   } catch (e) {
-    console.warn('Could not fetch USDC balance:', e);
+    console.warn('Could not fetch quote token balance:', e);
     return 0;
   }
 }
@@ -93,13 +93,13 @@ async function swapRaydium(
   _outputToken: TokenInfo,
   amountIn: string
 ): Promise<string> {
-  const { connection, wallet, usdcMint, skrMint } = params;
+  const { connection, wallet, quoteMint, baseMint } = params;
   try {
     const raydium = await getRaydiumInstance(connection, wallet);
 
     const data = await raydium.api.fetchPoolByMints({
-      mint1: usdcMint,
-      mint2: skrMint,
+      mint1: quoteMint,
+      mint2: baseMint,
     });
     const rawPools = (data as { data?: unknown[] }).data ?? data;
     const pools = Array.isArray(rawPools)
@@ -235,90 +235,102 @@ async function swapOrca(
 
 export type ExecuteArbitrageFn = (
   direction: 'A' | 'B',
-  amountUSDC: string
+  amountInQuote: string
 ) => Promise<void>;
 
 export async function executeArbitrage(
   params: ExecutorParams,
   direction: 'A' | 'B',
-  amountUSDC: string
+  amountInQuote: string
 ): Promise<void> {
-  const { connection, wallet, usdcMint, skrToken, usdcToken } = params;
+  const { connection, wallet, quoteMint, quoteToken, baseToken } = params;
 
-  console.log(`\n🚨 EXECUTING STRATEGY ${direction} with ${amountUSDC} USDC`);
+  console.log(
+    `\n🚨 EXECUTING STRATEGY ${direction} with ${amountInQuote} ${quoteToken.symbol}`
+  );
 
-  const startUsdc = await getUsdcBalance(connection, wallet, usdcMint);
-  console.log(`[Balance] Start: $${startUsdc.toFixed(6)} USDC`);
+  const startQuote = await getQuoteBalance(connection, wallet, quoteMint);
+  console.log(
+    `[Balance] Start: ${startQuote.toFixed(6)} ${quoteToken.symbol}`
+  );
 
   try {
     if (direction === 'A') {
-      await swapRaydium(params, usdcToken, skrToken, amountUSDC);
+      await swapRaydium(params, quoteToken, baseToken, amountInQuote);
 
       await sleep(1000);
 
-      const skrBalance = await connection.getTokenAccountBalance(
+      const baseBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(
-          new PublicKey(skrToken.mint),
+          new PublicKey(baseToken.mint),
           wallet.publicKey
         )
       );
 
       console.log(
-        `[Arbitrage] Acquired ${skrBalance.value.uiAmount} SKR. Selling on Orca...`
+        `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Orca...`
       );
 
-      if (skrBalance.value.uiAmount != null && skrBalance.value.uiAmount > 0) {
+      if (
+        baseBalance.value.uiAmount != null &&
+        baseBalance.value.uiAmount > 0
+      ) {
         await swapOrca(
           params,
-          skrToken,
-          usdcToken,
-          skrBalance.value.uiAmount.toString()
+          baseToken,
+          quoteToken,
+          baseBalance.value.uiAmount.toString()
         );
       }
     } else {
-      await swapOrca(params, usdcToken, skrToken, amountUSDC);
+      await swapOrca(params, quoteToken, baseToken, amountInQuote);
 
       await sleep(1000);
 
-      const skrBalance = await connection.getTokenAccountBalance(
+      const baseBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(
-          new PublicKey(skrToken.mint),
+          new PublicKey(baseToken.mint),
           wallet.publicKey
         )
       );
 
       console.log(
-        `[Arbitrage] Acquired ${skrBalance.value.uiAmount} SKR. Selling on Raydium...`
+        `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Raydium...`
       );
 
-      if (skrBalance.value.uiAmount != null && skrBalance.value.uiAmount > 0) {
+      if (
+        baseBalance.value.uiAmount != null &&
+        baseBalance.value.uiAmount > 0
+      ) {
         await swapRaydium(
           params,
-          skrToken,
-          usdcToken,
-          skrBalance.value.uiAmount.toString()
+          baseToken,
+          quoteToken,
+          baseBalance.value.uiAmount.toString()
         );
       }
     }
 
     await sleep(2000);
-    const endUsdc = await getUsdcBalance(connection, wallet, usdcMint);
-    const profit = endUsdc - startUsdc;
-    const profitPercent = (profit / parseFloat(amountUSDC)) * 100;
+    const endQuote = await getQuoteBalance(connection, wallet, quoteMint);
+    const profit = endQuote - startQuote;
+    const profitPercent = (profit / parseFloat(amountInQuote)) * 100;
 
     console.log(`\n=========================================`);
     console.log(`✅ EXECUTION COMPLETED`);
     console.log(`-----------------------------------------`);
-    console.log(`Start Balance: $${startUsdc.toFixed(6)}`);
-    console.log(`End Balance:   $${endUsdc.toFixed(6)}`);
+    console.log(
+      `Start Balance: ${startQuote.toFixed(6)} ${quoteToken.symbol}`
+    );
+    console.log(`End Balance:   ${endQuote.toFixed(6)} ${quoteToken.symbol}`);
     console.log(`-----------------------------------------`);
     if (profit > 0) {
       console.log(
-        `💰 PROFIT:      +$${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)`
+        `💰 PROFIT:      +${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)`
       );
     } else {
       console.log(
-        `📉 LOSS:        -$${Math.abs(profit).toFixed(6)} (${profitPercent.toFixed(2)}%)`
+        `📉 LOSS:        -${Math.abs(profit).toFixed(6)} (${profitPercent.toFixed(2)}%)`
       );
     }
     console.log(`=========================================\n`);
