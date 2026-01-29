@@ -46,7 +46,7 @@ async function getRaydiumPoolFeeRate(
   wallet: Keypair,
   quoteMint: string,
   baseMint: string
-): Promise<number> {
+): Promise<{ feeRate: number; poolId: string }> {
   try {
     const raydium = await Raydium.load({ connection, owner: wallet });
     const data = await raydium.api.fetchPoolByMints({
@@ -58,14 +58,15 @@ async function getRaydiumPoolFeeRate(
     const clmmPools = (
       pools as { programId: string; id: string; tvl: number }[]
     ).filter((p) => p.programId === CLMM_PROGRAM_ID.toBase58());
-    if (clmmPools.length === 0) return 0;
+    if (clmmPools.length === 0) return { feeRate: 0, poolId: '' };
     clmmPools.sort((a, b) => b.tvl - a.tvl);
-    const poolId = clmmPools[0]?.id;
-    if (!poolId) return 0;
+    const poolId = clmmPools[0]?.id ?? '';
+    if (!poolId) return { feeRate: 0, poolId: '' };
     const { computePoolInfo } = await raydium.clmm.getPoolInfoFromRpc(poolId);
-    return computePoolInfo.ammConfig.tradeFeeRate ?? 0;
+    const feeRate = computePoolInfo.ammConfig.tradeFeeRate ?? 0;
+    return { feeRate, poolId };
   } catch {
-    return 0;
+    return { feeRate: 0, poolId: '' };
   }
 }
 
@@ -73,11 +74,16 @@ export async function getPoolFeeRates(
   params: GetPoolFeeRatesParams
 ): Promise<PoolFeeRates> {
   const { connection, wallet, orcaPoolAddress, baseMint, quoteMint } = params;
-  const [orcaFeeRate, raydiumFeeRate] = await Promise.all([
+  const [orcaFeeRate, raydiumResult] = await Promise.all([
     getOrcaPoolFeeRate(connection, orcaPoolAddress),
     getRaydiumPoolFeeRate(connection, wallet, quoteMint, baseMint),
   ]);
+  const raydiumFeeRate = raydiumResult.feeRate;
   return { orcaFeeRate, raydiumFeeRate };
+}
+
+export function feeRateToPercent(rate: number): string {
+  return ((rate / FEE_RATE_DENOMINATOR) * 100).toFixed(4);
 }
 
 export function poolFeeUsdFromRates(

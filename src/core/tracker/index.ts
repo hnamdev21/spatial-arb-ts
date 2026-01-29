@@ -3,6 +3,8 @@ import type { Connection } from '@solana/web3.js';
 import type { GetOrcaQuote } from '../quoter/orca';
 import type { GetRaydiumQuote } from '../quoter/raydium';
 import type { ExecuteArbitrageFn } from '../executor';
+import type { PoolFeeRates } from '../pool-fee';
+import { poolFeeUsdFromRates, feeRateToPercent } from '../pool-fee';
 
 export type BalanceSnapshot = {
   usdc: number;
@@ -31,7 +33,7 @@ export type TrackerParams = {
   quoteSymbol?: string;
   baseSymbol?: string;
   getGasBreakdown: () => Promise<GasBreakdownWithUsd>;
-  getPoolFeeUsd: (amountUsdc: number) => Promise<number>;
+  poolFeeRates: PoolFeeRates;
   minProfitPercent: number;
   getBalance: () => Promise<BalanceSnapshot>;
 };
@@ -52,6 +54,10 @@ type DisplayState = {
   gasPriorityUsd: number;
   gasTotalUsd: number;
   poolFeeUsd: number;
+  orcaFeePercent: string;
+  raydiumFeePercent: string;
+  orcaPoolFeeUsd: number;
+  raydiumPoolFeeUsd: number;
   amountToCheck: string;
   quoteSymbol: string;
   baseSymbol: string;
@@ -118,32 +124,47 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
   console.table([
     {
       Fee: 'Network',
+      '%': '—',
       'Amount (SOL)': state.gasNetworkSol.toFixed(6),
       'Value ($)': `$${state.gasNetworkUsd.toFixed(4)}`,
     },
     {
       Fee: 'Priority',
+      '%': '—',
       'Amount (SOL)': state.gasPrioritySol.toFixed(6),
       'Value ($)': `$${state.gasPriorityUsd.toFixed(4)}`,
     },
     {
-      Fee: 'Pool',
+      Fee: 'Pool (Orca)',
+      '%': `${state.orcaFeePercent}%`,
       'Amount (SOL)': '—',
       'Value ($)':
-        state.poolFeeUsd > 0 ? `$${state.poolFeeUsd.toFixed(4)}` : '—',
+        state.orcaPoolFeeUsd > 0 ? `$${state.orcaPoolFeeUsd.toFixed(4)}` : '—',
+    },
+    {
+      Fee: 'Pool (Raydium)',
+      '%': `${state.raydiumFeePercent}%`,
+      'Amount (SOL)': '—',
+      'Value ($)':
+        state.raydiumPoolFeeUsd > 0
+          ? `$${state.raydiumPoolFeeUsd.toFixed(4)}`
+          : '—',
     },
     {
       Fee: 'Exchange',
+      '%': '—',
       'Amount (SOL)': '—',
       'Value ($)': '—',
     },
     {
       Fee: 'Total (gas)',
+      '%': '—',
       'Amount (SOL)': state.gasTotalSol.toFixed(6),
       'Value ($)': `$${state.gasTotalUsd.toFixed(4)}`,
     },
     {
       Fee: 'Total (est.)',
+      '%': '—',
       'Amount (SOL)': '—',
       'Value ($)':
         state.poolFeeUsd > 0
@@ -335,7 +356,7 @@ export function startTracking(params: TrackerParams): void {
     quoteSymbol = 'quote',
     baseSymbol = 'BASE',
     getGasBreakdown,
-    getPoolFeeUsd,
+    poolFeeRates,
     minProfitPercent,
     getBalance,
   } = params;
@@ -361,12 +382,15 @@ export function startTracking(params: TrackerParams): void {
     if (isSwapping) return;
 
     const inputUsdc = parseFloat(amountToCheck);
-    const [gasBreakdown, balance, poolFeeUsd] = await Promise.all([
+    const [gasBreakdown, balance] = await Promise.all([
       getGasBreakdown(),
       getBalance(),
-      getPoolFeeUsd(inputUsdc),
     ]);
     const gasTotalUsd = gasBreakdown.totalUsd;
+    const poolFeeUsd = poolFeeUsdFromRates(inputUsdc, poolFeeRates);
+    const orcaPoolFeeUsd = inputUsdc * (poolFeeRates.orcaFeeRate / 1_000_000);
+    const raydiumPoolFeeUsd =
+      inputUsdc * (poolFeeRates.raydiumFeeRate / 1_000_000);
     if (startUsdc === null) startUsdc = balance.usdc;
     if (startSol === null) startSol = balance.sol;
     const totalValue = balance.usdc + balance.sol * balance.solPriceUsd;
@@ -438,6 +462,10 @@ export function startTracking(params: TrackerParams): void {
       gasPriorityUsd: gasBreakdown.priorityUsd,
       gasTotalUsd: gasBreakdown.totalUsd,
       poolFeeUsd,
+      orcaFeePercent: feeRateToPercent(poolFeeRates.orcaFeeRate),
+      raydiumFeePercent: feeRateToPercent(poolFeeRates.raydiumFeeRate),
+      orcaPoolFeeUsd,
+      raydiumPoolFeeUsd,
       amountToCheck,
       quoteSymbol,
       baseSymbol,
