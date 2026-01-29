@@ -17,17 +17,19 @@ _Focus: Transitioning from a single-user script to a secure multi-tenant foundat
   - [x] Build `EncryptionService` helper class.
   - [x] Set up environment variables for Master Salt/Keys.
 
-## Phase 2: Authentication & User Onboarding (Discord-First)
+## Phase 2: Authentication & User Onboarding (Discord-First) ✅
 
 _Focus: Leveraging Discord for login and community management._
 
-- [ ] **Discord OAuth2 Integration**
-  - [ ] Register Discord Developer Application.
-  - [ ] Implement `Passport.js` with `passport-discord`.
-  - [ ] JWT Session Management.
-- [ ] **Wallet Generation Service**
-  - [ ] API to generate unique "Trading Wallet" per user.
-  - [ ] Encrypt and store Private Key.
+- [x] **Discord OAuth2 Integration**
+  - [x] Register Discord Developer Application.
+  - [x] Implement `Passport.js` with `passport-discord`.
+  - [x] JWT Session Management.
+- [x] **Wallet Generation Service**
+  - [x] API to generate unique "Trading Wallet" per user.
+  - [x] Encrypt and store Private Key.
+  - [x] Multi-wallet: FREE=1, PRO=10, WHALE=unlimited; first wallet auto-created on signup; route to create additional wallets.
+  - [x] Route → Controller → Service structure for API.
 
 ## Phase 3: Monetization & Payments (New) 💰
 

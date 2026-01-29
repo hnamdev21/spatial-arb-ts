@@ -17,7 +17,7 @@ Spatial arbitrage bot that tracks price spreads between **Orca** and **Raydium**
 | Blockchain  | Solana                                                                                                                |
 | DEX / Quote | Orca (Whirlpools), Raydium (CLMM)                                                                                     |
 | Key libs    | `@solana/web3.js`, `@orca-so/whirlpools-sdk`, `@raydium-io/raydium-sdk-v2`, `@solana/spl-token`, `decimal.js`, `bs58` |
-| Backend API | Express (Phase 1), Mongoose → MongoDB Atlas / local                                                                   |
+| Backend API | Express (Phase 1–2), Mongoose, Passport (Discord OAuth), JWT, wallet encryption (AES-256)                             |
 | Tooling     | ESLint, Prettier, Husky, Nodemon                                                                                      |
 | Infra       | Docker Compose (MongoDB, mongo-express)                                                                               |
 
@@ -45,12 +45,31 @@ src/
 │   │   └── index.ts      # Swap execution (Raydium + Orca) and arbitrage flow
 │   └── tracker/
 │       └── index.ts      # Account subscription, quotes, net profit, balance, execution trigger
-├── server/               # Express API (Phase 1)
+├── server/               # Express API (Phase 1–2). Structure: Route → Controller → Service
 │   ├── index.ts          # Start server + Mongoose connect
-│   ├── app.ts            # Express app (middleware, routes)
+│   ├── app.ts            # Express app (passport, route mounting)
 │   ├── db.ts             # connectMongo / disconnectMongo
-│   └── routes/
-│       └── health.ts     # GET /health
+│   ├── passport.ts       # Discord OAuth2 strategy (find/create User, ensureFirstWallet for new user)
+│   ├── config/
+│   │   └── auth.ts       # DISCORD_*, JWT_*, FRONTEND_URL, isAuthConfigured
+│   ├── constants/
+│   │   └── wallet.ts     # WALLET_LIMITS (FREE=1, PRO=10, WHALE=∞), getWalletLimit(plan)
+│   ├── middleware/
+│   │   └── auth.ts       # requireAuth: JWT from Bearer or query, attach req.user
+│   ├── types/
+│   │   └── express.d.ts  # Request.user (UserDocument)
+│   ├── controllers/      # Request/response only; call services
+│   │   ├── healthController.ts
+│   │   ├── authController.ts
+│   │   ├── userController.ts
+│   │   └── walletController.ts
+│   ├── services/         # Business logic (server-scoped)
+│   │   └── walletService.ts   # createWallet, listWallets, ensureFirstWallet
+│   └── routes/           # Thin: mount controller handlers
+│       ├── health.ts     # GET /health
+│       ├── auth.ts       # GET /auth/discord, GET /auth/discord/callback
+│       ├── users.ts      # GET /api/users/me
+│       └── wallets.ts    # POST /api/wallets, GET /api/wallets
 ├── services/
 │   └── EncryptionService.ts   # AES-256-GCM for wallet private keys (ENCRYPTION_KEY)
 └── models/               # Mongoose schemas (MongoDB)
@@ -257,14 +276,24 @@ src/
 
 ---
 
-### 10. API Server – `src/server/` (Phase 1)
+### 10. API Server – `src/server/` (Phase 1–2)
 
-**Purpose:** Express API and Mongoose connection for multi-tenant foundation. Used for health checks, future auth, and strategy/wallet APIs.
+**Purpose:** Express API, Mongoose, Discord OAuth + JWT, and wallet generation for multi-tenant foundation.
 
 - **`server/index.ts`** – Connects to MongoDB via `MONGODB_URI`, then starts Express on `PORT`.
-- **`server/app.ts`** – Express app with `express.json()`, `GET /health` (returns `{ status, mongo, timestamp }`).
+- **`server/app.ts`** – Express app with `express.json()`, `passport.initialize()`, `GET /health`, `/auth`, `/api/users`, `/api/wallets`.
 - **`server/db.ts`** – `connectMongo()`, `disconnectMongo()`.
-- **`services/EncryptionService`** – AES-256-GCM helper for encrypting/decrypting wallet private keys. Requires `ENCRYPTION_KEY` (32-byte hex or base64). Use `getEncryptionService()` for default instance.
+- **`server/passport.ts`** – Discord strategy: find or create User by `discordId`, sync username/avatar/email.
+- **`server/config/auth.ts`** – `authConfig` (discord clientID/secret/callbackURL, frontendUrl, jwt secret/expiresIn), `isAuthConfigured()`.
+- **`server/middleware/auth.ts`** – `requireAuth`: JWT from `Authorization: Bearer <token>` or `?token=`, verify and attach `req.user` (UserDocument).
+- **`server/routes/auth.ts`** – `GET /auth/discord` → redirect to Discord; `GET /auth/discord/callback` → redirect to `FRONTEND_URL/auth/callback?token=<JWT>`.
+- **`server/routes/users.ts`** – `GET /api/users/me` (protected): current user profile.
+- **`server/routes/wallets.ts`** – `POST /api/wallets` (protected): create additional wallet (subject to plan limit); `GET /api/wallets` (protected): list user wallets and plan limit. **Wallet limits by plan:** FREE = 1, PRO = 10, WHALE = unlimited. New users get one default wallet on signup (and on first list if none). Response includes `wallets` and `limit` (number or `null` for unlimited).
+- **`services/EncryptionService`** – AES-256-GCM for wallet private keys. Requires `ENCRYPTION_KEY` (32-byte hex or base64). Use `getEncryptionService()` for default instance.
+
+**Auth flow:** User visits `GET /auth/discord` → Discord login → callback → JWT issued → redirect to frontend with `?token=...`. Frontend stores token and sends `Authorization: Bearer <token>` for `/api/*` requests.
+
+**API structure (Route → Controller → Service):** Routes only mount middleware and controller handlers. Controllers handle HTTP (req/res) and call services. Services hold business logic (wallet limits, create/list/ensureFirstWallet). Shared helpers (e.g. EncryptionService) live under `src/services/`; server-scoped services under `src/server/services/`.
 
 **Run API:** `npm run start:server` or `npm run dev:server` (with Nodemon).
 
@@ -291,7 +320,7 @@ src/
 
 Copy `.env.example` to `.env` and fill values.
 
-**API (Phase 1):** `PORT`, `MONGODB_URI`, `ENCRYPTION_KEY` (required for wallet encryption).
+**API (Phase 1–2):** `PORT`, `MONGODB_URI`, `ENCRYPTION_KEY` (required for wallet encryption). For Discord auth: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `JWT_SECRET`; optional: `API_BASE_URL`, `DISCORD_CALLBACK_URL`, `FRONTEND_URL`, `JWT_EXPIRES_IN`.
 
 **Bot:** `WALLET_PRIVATE_KEY` (required for legacy single-wallet mode).
 

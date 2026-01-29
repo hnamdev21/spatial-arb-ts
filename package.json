@@ -26,14 +26,20 @@
     "bs58": "^6.0.0",
     "decimal.js": "^10.6.0",
     "express": "^5.2.1",
-    "mongoose": "^9.1.5"
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^9.1.5",
+    "passport": "^0.7.0",
+    "passport-discord": "^0.1.4"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@types/bn.js": "^5.2.0",
     "@types/bs58": "^5.0.0",
     "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^25.0.10",
+    "@types/passport": "^1.0.17",
+    "@types/passport-discord": "^0.1.15",
     "dotenv": "^17.2.3",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",

@@ -1,12 +1,6 @@
-import type { Request, Response } from 'express';
-import mongoose from 'mongoose';
+import { Router } from 'express';
+import { getHealth } from '../controllers/healthController';
 
-export function getHealth(_req: Request, res: Response): void {
-  const mongoState =
-    mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-  res.json({
-    status: 'ok',
-    mongo: mongoState,
-    timestamp: new Date().toISOString(),
-  });
-}
+const router = Router();
+router.get('/', getHealth);
+export default router;
