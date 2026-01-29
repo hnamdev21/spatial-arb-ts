@@ -4,7 +4,7 @@ import { startTracking } from './core/tracker';
 import type { BalanceSnapshot } from './core/tracker';
 import { createOrcaQuoter, createRaydiumQuoter } from './core/quoter';
 import { executeArbitrage } from './core/executor';
-import { getGasEstSol } from './core/gas';
+import { getGasBreakdown } from './core/gas';
 import { getSolPriceUsd } from './core/price';
 import {
   connection,
@@ -54,12 +54,17 @@ async function main(): Promise<void> {
       amountInQuote
     );
 
-  const getGasCostUsd = async (): Promise<number> => {
-    const [gasEstSol, solPriceUsd] = await Promise.all([
-      getGasEstSol({ connection }),
+  const getGasBreakdownWithUsd = async () => {
+    const [breakdown, solPriceUsd] = await Promise.all([
+      getGasBreakdown({ connection }),
       getSolPriceUsd(),
     ]);
-    return gasEstSol * solPriceUsd;
+    return {
+      ...breakdown,
+      networkUsd: breakdown.networkSol * solPriceUsd,
+      priorityUsd: breakdown.prioritySol * solPriceUsd,
+      totalUsd: breakdown.totalSol * solPriceUsd,
+    };
   };
 
   const getBalance = async (): Promise<BalanceSnapshot> => {
@@ -93,7 +98,7 @@ async function main(): Promise<void> {
     profitThreshold: PROFIT_THRESHOLD,
     quoteSymbol: QUOTE_TOKEN.symbol,
     baseSymbol: BASE_TOKEN.symbol,
-    getGasCostUsd,
+    getGasBreakdown: getGasBreakdownWithUsd,
     minProfitPercent: MIN_PROFIT_PERCENT,
     getBalance,
   });

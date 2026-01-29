@@ -10,6 +10,15 @@ export type BalanceSnapshot = {
   solPriceUsd: number;
 };
 
+export type GasBreakdownWithUsd = {
+  networkSol: number;
+  prioritySol: number;
+  totalSol: number;
+  networkUsd: number;
+  priorityUsd: number;
+  totalUsd: number;
+};
+
 export type TrackerParams = {
   connection: Connection;
   orcaPoolAddress: string;
@@ -21,7 +30,7 @@ export type TrackerParams = {
   profitThreshold: number;
   quoteSymbol?: string;
   baseSymbol?: string;
-  getGasCostUsd: () => Promise<number>;
+  getGasBreakdown: () => Promise<GasBreakdownWithUsd>;
   minProfitPercent: number;
   getBalance: () => Promise<BalanceSnapshot>;
 };
@@ -35,7 +44,12 @@ type PriceData = {
 type DisplayState = {
   minProfitPercent: number;
   minProfitThreshold: number;
-  gasCostUsd: number;
+  gasNetworkSol: number;
+  gasPrioritySol: number;
+  gasTotalSol: number;
+  gasNetworkUsd: number;
+  gasPriorityUsd: number;
+  gasTotalUsd: number;
   amountToCheck: string;
   quoteSymbol: string;
   baseSymbol: string;
@@ -100,7 +114,26 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
 
   console.log('Fee');
   console.table([
-    { Fee: 'Gas (USD)', Value: `$${state.gasCostUsd.toFixed(2)}` },
+    {
+      Fee: 'Network',
+      'Amount (SOL)': state.gasNetworkSol.toFixed(6),
+      'Value ($)': `$${state.gasNetworkUsd.toFixed(4)}`,
+    },
+    {
+      Fee: 'Priority',
+      'Amount (SOL)': state.gasPrioritySol.toFixed(6),
+      'Value ($)': `$${state.gasPriorityUsd.toFixed(4)}`,
+    },
+    {
+      Fee: 'Exchange',
+      'Amount (SOL)': '—',
+      'Value ($)': '—',
+    },
+    {
+      Fee: 'Total',
+      'Amount (SOL)': state.gasTotalSol.toFixed(6),
+      'Value ($)': `$${state.gasTotalUsd.toFixed(4)}`,
+    },
   ]);
 
   console.log('Balance');
@@ -126,20 +159,20 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
   console.table([
     {
       Asset: state.quoteSymbol,
-      Amount: state.usdc.toFixed(4),
-      Value: `$${usdcValue.toFixed(2)}`,
+      'Amount (USDC)': state.usdc.toFixed(4),
+      'Value ($)': `$${usdcValue.toFixed(2)}`,
       '% changed': usdcPct,
     },
     {
       Asset: 'SOL',
-      Amount: state.sol.toFixed(6),
-      Value: `$${solValue.toFixed(2)}`,
+      'Amount (SOL)': state.sol.toFixed(6),
+      'Value ($)': `$${solValue.toFixed(2)}`,
       '% changed': solPct,
     },
     {
       Asset: 'Total',
       Amount: '—',
-      Value: `$${totalValue.toFixed(2)}`,
+      'Value ($)': `$${totalValue.toFixed(2)}`,
       '% changed': totalPct,
     },
   ]);
@@ -160,14 +193,14 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
     {
       Volume: 'Input',
       Amount: inputAmount,
-      Value: inputValue,
-      'Est Net Profit': inputEstNet,
+      'Value ($)': inputValue,
+      'Est Net ($)': inputEstNet,
     },
     {
       Volume: 'Recommend',
       Amount: recommendAmount,
-      Value: recommendValue,
-      'Est Net Profit': 'Break-even',
+      'Value ($)': recommendValue,
+      'Est Net ($)': 'Break-even',
     },
   ]);
 
@@ -201,7 +234,7 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
             100
           ).toFixed(2) + '%'
         : '—';
-    const pairPriceLabel = `Pair price (1 ${state.baseSymbol} → ${state.quoteSymbol})`;
+    const pairPriceLabel = `Price (1 ${state.baseSymbol} → ${state.quoteSymbol})`;
     console.table([
       {
         DEX: 'Orca',
@@ -231,23 +264,23 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
     const strategyRows: Array<{
       Strategy: string;
       Output: string;
-      Net: string;
-      '% net profit': string;
+      'Net ($)': string;
+      'Net (%)': string;
     }> = [];
     if (state.netProfitA !== null && state.outputLeg2A !== null) {
       strategyRows.push({
         Strategy: 'A (Buy Ray → Sell Orca)',
         Output: `$${Number(state.outputLeg2A).toFixed(4)}`,
-        Net: `$${state.netProfitA.toFixed(4)}`,
-        '% net profit': pctNetA,
+        'Net ($)': `$${state.netProfitA.toFixed(4)}`,
+        'Net (%)': pctNetA,
       });
     }
     if (state.netProfitB !== null && state.outputLeg2B !== null) {
       strategyRows.push({
         Strategy: 'B (Buy Orca → Sell Ray)',
         Output: `$${Number(state.outputLeg2B).toFixed(4)}`,
-        Net: `$${state.netProfitB.toFixed(4)}`,
-        '% net profit': pctNetB,
+        'Net ($)': `$${state.netProfitB.toFixed(4)}`,
+        'Net (%)': pctNetB,
       });
     }
     if (strategyRows.length > 0) console.table(strategyRows);
@@ -263,7 +296,7 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
       Status: t.status,
       Order: t.orderLabel,
       'Input volume': t.inputVolume,
-      'Net profit': t.netProfit != null ? `$${t.netProfit.toFixed(4)}` : '—',
+      'Net ($)': t.netProfit != null ? `$${t.netProfit.toFixed(4)}` : '—',
       'Fail reason': t.failReason ?? '—',
       Time: t.timestamp,
     }));
@@ -285,7 +318,7 @@ export function startTracking(params: TrackerParams): void {
     profitThreshold,
     quoteSymbol = 'quote',
     baseSymbol = 'BASE',
-    getGasCostUsd,
+    getGasBreakdown,
     minProfitPercent,
     getBalance,
   } = params;
@@ -311,10 +344,11 @@ export function startTracking(params: TrackerParams): void {
     if (isSwapping) return;
 
     const inputUsdc = parseFloat(amountToCheck);
-    const [gasCostUsd, balance] = await Promise.all([
-      getGasCostUsd(),
+    const [gasBreakdown, balance] = await Promise.all([
+      getGasBreakdown(),
       getBalance(),
     ]);
+    const gasTotalUsd = gasBreakdown.totalUsd;
     if (startUsdc === null) startUsdc = balance.usdc;
     if (startSol === null) startSol = balance.sol;
     const totalValue = balance.usdc + balance.sol * balance.solPriceUsd;
@@ -333,7 +367,7 @@ export function startTracking(params: TrackerParams): void {
       raydiumPairPrice = rayBuy.price;
       const orcaSellA = await getOrcaQuote(rayBuy.output, false);
       const outputA = parseFloat(orcaSellA.output);
-      netProfitA = outputA - inputUsdc - gasCostUsd;
+      netProfitA = outputA - inputUsdc - gasTotalUsd;
       outputLeg2A = orcaSellA.output;
     } catch {
       // skip Strategy A on quote failure
@@ -344,7 +378,7 @@ export function startTracking(params: TrackerParams): void {
       orcaPairPrice = orcaBuy.price;
       const raySellB = await getRaydiumQuote(orcaBuy.output, false);
       const outputB = parseFloat(raySellB.output);
-      netProfitB = outputB - inputUsdc - gasCostUsd;
+      netProfitB = outputB - inputUsdc - gasTotalUsd;
       outputLeg2B = raySellB.output;
     } catch {
       // skip Strategy B on quote failure
@@ -366,9 +400,9 @@ export function startTracking(params: TrackerParams): void {
     const grossA = outputA - inputUsdc;
     const grossB = outputB - inputUsdc;
     const recommendVolumeA =
-      grossA > 0 ? (gasCostUsd * inputUsdc) / grossA : null;
+      grossA > 0 ? (gasTotalUsd * inputUsdc) / grossA : null;
     const recommendVolumeB =
-      grossB > 0 ? (gasCostUsd * inputUsdc) / grossB : null;
+      grossB > 0 ? (gasTotalUsd * inputUsdc) / grossB : null;
     const recommendVolumes: number[] = [];
     if (recommendVolumeA !== null) recommendVolumes.push(recommendVolumeA);
     if (recommendVolumeB !== null) recommendVolumes.push(recommendVolumeB);
@@ -379,7 +413,12 @@ export function startTracking(params: TrackerParams): void {
     const displayState: DisplayState = {
       minProfitPercent,
       minProfitThreshold,
-      gasCostUsd,
+      gasNetworkSol: gasBreakdown.networkSol,
+      gasPrioritySol: gasBreakdown.prioritySol,
+      gasTotalSol: gasBreakdown.totalSol,
+      gasNetworkUsd: gasBreakdown.networkUsd,
+      gasPriorityUsd: gasBreakdown.priorityUsd,
+      gasTotalUsd: gasBreakdown.totalUsd,
       amountToCheck,
       quoteSymbol,
       baseSymbol,

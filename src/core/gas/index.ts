@@ -13,31 +13,47 @@ export type GetGasEstSolParams = {
 
 export type GetGasEstSolReturn = number;
 
+export type GasBreakdown = {
+  networkSol: number;
+  prioritySol: number;
+  totalSol: number;
+};
+
+export async function getGasBreakdown(
+  params: GetGasEstSolParams
+): Promise<GasBreakdown> {
+  const { connection } = params;
+  const networkLamports = NUM_TXS * LAMPORTS_PER_SIGNATURE;
+  const networkSol = networkLamports / LAMPORTS_PER_SOL;
+  let prioritySol = 0;
+  try {
+    const fees = await connection.getRecentPrioritizationFees();
+    if (fees.length > 0) {
+      const sorted = [...fees].sort(
+        (a, b) => b.prioritizationFee - a.prioritizationFee
+      );
+      const p75Index = Math.min(
+        Math.floor(sorted.length * 0.75),
+        sorted.length - 1
+      );
+      const priorityFeePerCu = sorted[p75Index]?.prioritizationFee ?? 0;
+      const priorityLamports =
+        NUM_TXS * ESTIMATED_CU_PER_SWAP * priorityFeePerCu * 1e-6;
+      prioritySol = priorityLamports / LAMPORTS_PER_SOL;
+    }
+  } catch {
+    // keep prioritySol 0
+  }
+  const totalSol = Math.max(
+    networkSol + prioritySol,
+    FALLBACK_GAS_EST_SOL * 0.5
+  );
+  return { networkSol, prioritySol, totalSol };
+}
+
 export async function getGasEstSol(
   params: GetGasEstSolParams
 ): Promise<GetGasEstSolReturn> {
-  const { connection } = params;
-  try {
-    const fees = await connection.getRecentPrioritizationFees();
-    if (!fees.length) return FALLBACK_GAS_EST_SOL;
-
-    const sorted = [...fees].sort(
-      (a, b) => b.prioritizationFee - a.prioritizationFee
-    );
-    const p75Index = Math.min(
-      Math.floor(sorted.length * 0.75),
-      sorted.length - 1
-    );
-    const priorityFeePerCu = sorted[p75Index]?.prioritizationFee ?? 0;
-
-    const priorityLamportsPerTx =
-      ESTIMATED_CU_PER_SWAP * priorityFeePerCu * 1e-6;
-    const lamportsPerTx = LAMPORTS_PER_SIGNATURE + priorityLamportsPerTx;
-    const solPerTx = lamportsPerTx / LAMPORTS_PER_SOL;
-    const gasEstSol = NUM_TXS * solPerTx;
-
-    return Math.max(gasEstSol, FALLBACK_GAS_EST_SOL * 0.5);
-  } catch {
-    return FALLBACK_GAS_EST_SOL;
-  }
+  const { totalSol } = await getGasBreakdown(params);
+  return totalSol;
 }
