@@ -196,13 +196,13 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
   console.table([
     {
       Asset: state.quoteSymbol,
-      'Amount (USDC)': state.usdc.toFixed(4),
+      Amount: state.usdc.toFixed(4),
       'Value ($)': `$${usdcValue.toFixed(2)}`,
       '% changed': usdcPct,
     },
     {
       Asset: 'SOL',
-      'Amount (SOL)': state.sol.toFixed(6),
+      Amount: state.sol.toFixed(6),
       'Value ($)': `$${solValue.toFixed(2)}`,
       '% changed': solPct,
     },
