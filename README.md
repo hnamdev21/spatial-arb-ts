@@ -211,6 +211,8 @@ src/
 
 **Real-time updates:** The tracker subscribes to pool account changes via `connection.onAccountChange` (WebSocket over the configured RPC). Price and net-profit updates are driven by these account-change events; a 1s interval only re-renders the display (e.g. clock and "Last eval") without re-fetching quotes. For truly real-time or lowest-latency updates (e.g. sub-second reaction to on-chain changes), use an RPC that supports **gRPC** or dedicated account streaming, or a provider that pushes account updates reliably.
 
+**RPC rate limiting protection:** To prevent 429 (Too Many Requests) errors when using free-tier RPC providers (e.g. Helius), the tracker implements **debouncing** on account-change callbacks. Multiple rapid account changes (e.g. 10 changes in 1 second) are coalesced into a single quote evaluation after a 300ms delay. This reduces RPC calls from N events to 1 evaluation, significantly lowering the risk of rate limit errors while maintaining responsive price tracking.
+
 ---
 
 ### 8. Entry – `src/index.ts`

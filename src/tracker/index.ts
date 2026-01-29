@@ -429,6 +429,10 @@ export function startTracking(params: TrackerParams): void {
     }
   }
 
+  let orcaDebounceTimer: NodeJS.Timeout | null = null;
+  let raydiumDebounceTimer: NodeJS.Timeout | null = null;
+  const DEBOUNCE_DELAY_MS = 300;
+
   async function updateOrca(): Promise<void> {
     if (isSwapping) return;
     try {
@@ -447,15 +451,35 @@ export function startTracking(params: TrackerParams): void {
     }
   }
 
+  function debouncedUpdateOrca(): void {
+    if (orcaDebounceTimer !== null) {
+      clearTimeout(orcaDebounceTimer);
+    }
+    orcaDebounceTimer = setTimeout(() => {
+      void updateOrca();
+      orcaDebounceTimer = null;
+    }, DEBOUNCE_DELAY_MS);
+  }
+
+  function debouncedUpdateRaydium(): void {
+    if (raydiumDebounceTimer !== null) {
+      clearTimeout(raydiumDebounceTimer);
+    }
+    raydiumDebounceTimer = setTimeout(() => {
+      void updateRaydium();
+      raydiumDebounceTimer = null;
+    }, DEBOUNCE_DELAY_MS);
+  }
+
   console.log('Initializing WebSocket connections...');
   connection.onAccountChange(
     new PublicKey(orcaPoolAddress),
-    () => void updateOrca(),
+    debouncedUpdateOrca,
     { commitment: 'processed' }
   );
   connection.onAccountChange(
     new PublicKey(raydiumPoolId),
-    () => void updateRaydium(),
+    debouncedUpdateRaydium,
     { commitment: 'processed' }
   );
   setInterval(() => {
