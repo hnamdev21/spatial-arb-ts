@@ -1,11 +1,11 @@
 import { getAssociatedTokenAddress } from '@solana/spl-token';
 import { PublicKey } from '@solana/web3.js';
-import { startTracking } from './tracker';
-import type { BalanceSnapshot } from './tracker';
-import { createOrcaQuoter, createRaydiumQuoter } from './quoter';
-import { executeArbitrage } from './executor';
-import { getGasEstSol } from './gas';
-import { getSolPriceUsd } from './price';
+import { startTracking } from './core/tracker';
+import type { BalanceSnapshot } from './core/tracker';
+import { createOrcaQuoter, createRaydiumQuoter } from './core/quoter';
+import { executeArbitrage } from './core/executor';
+import { getGasEstSol } from './core/gas';
+import { getSolPriceUsd } from './core/price';
 import {
   connection,
   wallet,

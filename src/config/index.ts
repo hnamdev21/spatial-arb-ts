@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { Connection, Keypair, PublicKey } from '@solana/web3.js';
 import bs58 from 'bs58';
-import type { TokenInfo } from '../types';
+import type { TokenInfo } from '../core/types';
 
 const RPC_URL = process.env.RPC_URL ?? 'https://api.mainnet-beta.solana.com';
 const WALLET_PRIVATE_KEY = process.env.WALLET_PRIVATE_KEY;

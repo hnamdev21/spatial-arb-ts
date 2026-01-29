@@ -26,23 +26,31 @@ Spatial arbitrage bot that tracks price spreads between **Orca** and **Raydium**
 
 ```
 src/
-├── index.ts              # Entry: config, quoters, gas, price, executor, tracker
+├── index.ts              # Entry: config + core (quoters, gas, price, executor, tracker)
 ├── config/
 │   └── index.ts          # Env, connection, wallet, tokens, pool addresses, profit/gas defaults
-├── types/
-│   └── index.ts          # Shared types: TokenInfo, Quote<TDex>
-├── quoter/
-│   ├── index.ts          # Re-exports Orca + Raydium quoters
-│   ├── orca.ts           # Orca Whirlpool quote factory
-│   └── raydium.ts        # Raydium CLMM quote factory
-├── gas/
-│   └── index.ts          # Real-time gas estimate (SOL) via getRecentPrioritizationFees
-├── price/
-│   └── index.ts          # Real-time SOL/USD (Binance, Jupiter, CoinGecko)
-├── executor/
-│   └── index.ts          # Swap execution (Raydium + Orca) and arbitrage flow
-└── tracker/
-    └── index.ts          # Account subscription, quotes, net profit, balance, execution trigger
+├── core/                 # Arbitrage engine: types, quoters, gas, price, executor, tracker
+│   ├── types/
+│   │   └── index.ts      # Shared types: TokenInfo, Quote<TDex>
+│   ├── quoter/
+│   │   ├── index.ts      # Re-exports Orca + Raydium quoters
+│   │   ├── orca.ts       # Orca Whirlpool quote factory
+│   │   └── raydium.ts    # Raydium CLMM quote factory
+│   ├── gas/
+│   │   └── index.ts      # Real-time gas estimate (SOL) via getRecentPrioritizationFees
+│   ├── price/
+│   │   └── index.ts      # Real-time SOL/USD (Binance, Jupiter, CoinGecko)
+│   ├── executor/
+│   │   └── index.ts      # Swap execution (Raydium + Orca) and arbitrage flow
+│   └── tracker/
+│       └── index.ts      # Account subscription, quotes, net profit, balance, execution trigger
+└── models/               # Mongoose schemas (MongoDB) for users, strategies, transactions, etc.
+    ├── User.ts
+    ├── Strategy.ts
+    ├── Transaction.ts
+    ├── LeaderboardStat.ts
+    ├── EquitySnapshot.ts
+    └── Payment.ts
 ```
 
 ---
@@ -51,7 +59,7 @@ src/
 
 ### 1. `config`
 
-**Purpose:** Load env, create Solana connection and wallet, define base/quote tokens and pool addresses, and default values for gas and min profit. Single source for runtime config; overridable via env.
+**Purpose:** Load env, create Solana connection and wallet, define base/quote tokens and pool addresses, and default values for gas and min profit. Single source for runtime config; overridable via env. Uses `TokenInfo` from `core/types`.
 
 **Exports (usage):**
 
@@ -68,7 +76,7 @@ src/
 
 ---
 
-### 2. `types`
+### 2. `core/types`
 
 **Purpose:** Shared types used across config, quoter, executor, and tracker.
 
@@ -81,7 +89,7 @@ src/
 
 ---
 
-### 3. `quoter`
+### 3. `core/quoter`
 
 **Purpose:** Get swap quotes for a given base/quote pair from Orca and Raydium. Each DEX is a factory that returns a quote function (no direct config import; all inputs via params).
 
@@ -120,7 +128,7 @@ src/
 
 ---
 
-### 4. `gas`
+### 4. `core/gas`
 
 **Purpose:** Estimate gas cost in SOL for two swap transactions using real-time priority fees from the RPC. Used to compute gas cost in USD (with SOL price) for net-profit calculation.
 
@@ -138,7 +146,7 @@ src/
 
 ---
 
-### 5. `price`
+### 5. `core/price`
 
 **Purpose:** Fetch current SOL price in USD from external APIs. Used for gas cost in USD and balance value. Tries multiple sources; falls back to env if all fail.
 
@@ -152,7 +160,7 @@ src/
 
 ---
 
-### 6. `executor`
+### 6. `core/executor`
 
 **Purpose:** Run two-leg arbitrage: swap quote→base on one DEX, then base→quote on the other. Handles Raydium CLMM and Orca Whirlpool swaps; reports balance and PnL in quote token.
 
@@ -181,7 +189,7 @@ src/
 
 ---
 
-### 7. `tracker`
+### 7. `core/tracker`
 
 **Purpose:** Subscribe to pool account changes (Orca + Raydium), refresh quotes, compute net profit (output − input − gas) and recommend volume, and call the executor when net profit exceeds `minProfitPercent` of input. Displays pair price, strategy output, balance (with value and % vs start), and volume (input vs recommend) in table form.
 
@@ -215,9 +223,24 @@ src/
 
 ---
 
-### 8. Entry – `src/index.ts`
+### 8. `models`
 
-**Purpose:** Compose config and modules: create Orca and Raydium quoters, implement `getGasCostUsd` (gas SOL × SOL price) and `getBalance` (USDC + SOL + SOL price), wrap `executeArbitrage` with fixed `ExecutorParams`, then start the tracker with pool IDs, quoters, executor, gas, balance, and min profit. Reads optional env: `RAYDIUM_POOL_ID`, `AMOUNT_TO_CHECK`, `PROFIT_THRESHOLD`, `MIN_PROFIT_PERCENT`.
+**Purpose:** Mongoose schemas for MongoDB. Used by app features that persist users, strategies, transactions, leaderboard, and equity snapshots (Docker Compose: MongoDB + mongo-express).
+
+| Model             | Description                                                                   |
+| ----------------- | ----------------------------------------------------------------------------- |
+| `User`            | Discord id, username, avatar, email; subscription (plan, expiresAt, Stripe)   |
+| `Strategy`        | User/wallet ref, pair (base/quote mints, Orca/Raydium pools), config, stats   |
+| `Transaction`     | User/strategy ref, txHash, status; display, performance, details, financials  |
+| `LeaderboardStat` | User ref, period; totalProfitUsd, winRate, totalTrades, totalVolumeUsd, roi   |
+| `EquitySnapshot`  | Timeseries: metadata (user/strategy/pair), totalValueUsd, cumulativeProfitUsd |
+| `Payment`         | (Reserved for payment/subscription records)                                   |
+
+---
+
+### 9. Entry – `src/index.ts`
+
+**Purpose:** Compose config and core modules: import from `./config` and `./core/*` (quoter, gas, price, executor, tracker). Create Orca and Raydium quoters, implement `getGasCostUsd` (gas SOL × SOL price) and `getBalance` (USDC + SOL + SOL price), wrap `executeArbitrage` with fixed `ExecutorParams`, then start the tracker with pool IDs, quoters, executor, gas, balance, and min profit. Reads optional env: `RAYDIUM_POOL_ID`, `AMOUNT_TO_CHECK`, `PROFIT_THRESHOLD`, `MIN_PROFIT_PERCENT`.
 
 **Flow:** `main()` → `createOrcaQuoter` / `createRaydiumQuoter` → `getGasEstSol` + `getSolPriceUsd` (for `getGasCostUsd` and `getBalance`) → `startTracking({ ... runArbitrage, getGasCostUsd, getBalance, minProfitPercent, baseSymbol ... })` → keeps process alive with `setInterval`.
 

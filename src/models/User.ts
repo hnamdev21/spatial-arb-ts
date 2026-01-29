@@ -9,6 +9,8 @@ const UserSchema = new mongoose.Schema({
   subscription: {
     plan: { type: String, enum: ['FREE', 'PRO', 'WHALE'], default: 'FREE' },
     expiresAt: { type: Date },
+    autoRenew: { type: Boolean, default: false },
+    stripeCustomerId: { type: String },
   },
 
   isOnboarded: { type: Boolean, default: false },
