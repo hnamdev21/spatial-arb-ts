@@ -5,8 +5,6 @@ import {
   TxVersion,
   ApiV3PoolInfoConcentratedItem,
   PoolUtils,
-  ComputeClmmPoolInfo,
-  ReturnTypeFetchMultiplePoolTickArrays,
 } from '@raydium-io/raydium-sdk-v2';
 import {
   WhirlpoolContext,
@@ -118,25 +116,12 @@ async function swapRaydium(
       throw new Error('Input mint does not match pool');
     }
 
-    let clmmPoolInfo: ComputeClmmPoolInfo;
-    let tickCache: ReturnTypeFetchMultiplePoolTickArrays;
-    let poolKeys: Parameters<typeof raydium.clmm.swap>[0]['poolKeys'];
-
-    if (raydium.cluster === 'mainnet') {
-      clmmPoolInfo = await PoolUtils.fetchComputeClmmInfo({
-        connection: raydium.connection,
-        poolInfo,
-      });
-      tickCache = await PoolUtils.fetchMultiplePoolTickArrays({
-        connection: raydium.connection,
-        poolKeys: [clmmPoolInfo],
-      });
-    } else {
-      const rpcData = await raydium.clmm.getPoolInfoFromRpc(poolInfo.id);
-      poolKeys = rpcData.poolKeys;
-      clmmPoolInfo = rpcData.computePoolInfo;
-      tickCache = rpcData.tickData;
-    }
+    const rpcData = await raydium.clmm.getPoolInfoFromRpc(poolInfo.id);
+    const {
+      poolKeys,
+      computePoolInfo: clmmPoolInfo,
+      tickData: tickCache,
+    } = rpcData;
 
     const amountInBN = new BN(
       new Decimal(amountIn)
@@ -162,11 +147,11 @@ async function swapRaydium(
         epochInfo: await raydium.fetchEpochInfo(),
       });
 
-    console.log(`[Raydium] Swapping ${amountIn} ${inputToken.symbol}...`);
+    // console.log(`[Raydium] Swapping ${amountIn} ${inputToken.symbol}...`);
 
     const { execute } = await raydium.clmm.swap({
-      poolInfo,
-      poolKeys: poolKeys!,
+      poolInfo: rpcData.poolInfo,
+      poolKeys,
       inputMint: inputMint.toBase58(),
       amountIn: amountInBN,
       amountOutMin: minAmountOut.amount.raw,
@@ -183,7 +168,7 @@ async function swapRaydium(
     });
 
     const { txId } = await execute();
-    console.log(`[Raydium] Confirmed: https://solscan.io/tx/${txId}`);
+    // console.log(`[Raydium] Confirmed: https://solscan.io/tx/${txId}`);
 
     return txId;
   } catch (e) {
@@ -219,12 +204,12 @@ async function swapOrca(
       undefined
     );
 
-    console.log(`[Orca] Swapping ${amountIn} ${inputToken.symbol}...`);
+    // console.log(`[Orca] Swapping ${amountIn} ${inputToken.symbol}...`);
 
     const txBuilder = await whirlpool.swap(quote);
     const tx = await txBuilder.buildAndExecute();
 
-    console.log(`[Orca] Confirmed: https://solscan.io/tx/${tx}`);
+    // console.log(`[Orca] Confirmed: https://solscan.io/tx/${tx}`);
 
     return tx;
   } catch (e) {
@@ -276,9 +261,9 @@ export async function executeArbitrage(
         )
       );
 
-      console.log(
-        `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Orca...`
-      );
+      // console.log(
+      //   `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Orca...`
+      // );
 
       if (
         baseBalance.value.uiAmount != null &&
@@ -308,9 +293,9 @@ export async function executeArbitrage(
         )
       );
 
-      console.log(
-        `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Raydium...`
-      );
+      // console.log(
+      //   `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Raydium...`
+      // );
 
       if (
         baseBalance.value.uiAmount != null &&
