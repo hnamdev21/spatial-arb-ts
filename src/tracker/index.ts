@@ -48,6 +48,7 @@ type DisplayState = {
   outputLeg2A: string | null;
   outputLeg2B: string | null;
   recommendVolume: number | null;
+  bestNet: number;
   startOutputA: number | null;
   startOutputB: number | null;
   usdc: number;
@@ -59,6 +60,13 @@ type DisplayState = {
   lastEvalTime: number;
 };
 
+export type TradeRecord = {
+  txSignature: string;
+  inputVolume: string;
+  netProfit: number;
+  timestamp: string;
+};
+
 function formatVsStart(current: number, start: number): string {
   if (start === 0) return '';
   const pct = ((current - start) / start) * 100;
@@ -67,7 +75,7 @@ function formatVsStart(current: number, start: number): string {
   return ` (start $${start.toFixed(4)}, unchanged)`;
 }
 
-function render(state: DisplayState): void {
+function render(state: DisplayState, trades: TradeRecord[]): void {
   const now = new Date();
   const lastEvalAgo =
     state.lastEvalTime > 0
@@ -75,14 +83,90 @@ function render(state: DisplayState): void {
       : '';
 
   console.clear();
-  console.log(
-    `--- 🛰 Spatial Arbitrage (Net Profit > ${state.minProfitPercent}% ≈ $${state.minProfitThreshold.toFixed(2)}, Gas ≈ $${state.gasCostUsd.toFixed(2)}) ---`
-  );
-  console.log(`SOL/${state.quoteSymbol}: $${state.solPriceUsd.toFixed(4)}`);
+
   console.log(
     `Time: ${now.toISOString()}${lastEvalAgo ? `  |  Last eval: ${lastEvalAgo}` : ''}`
   );
-  console.log(`Input Leg 1: ${state.amountToCheck} ${state.quoteSymbol}`);
+
+  console.log('Fee');
+  console.table([
+    { Fee: 'Min profit %', Value: `${state.minProfitPercent}%` },
+    { Fee: 'Min profit ($)', Value: `$${state.minProfitThreshold.toFixed(2)}` },
+    { Fee: 'Gas (USD)', Value: `$${state.gasCostUsd.toFixed(2)}` },
+    {
+      Fee: `SOL/${state.quoteSymbol}`,
+      Value: `$${state.solPriceUsd.toFixed(4)}`,
+    },
+  ]);
+
+  console.log('Balance');
+  const usdcPct =
+    state.startUsdc != null && state.startUsdc !== 0
+      ? (((state.usdc - state.startUsdc) / state.startUsdc) * 100).toFixed(2) +
+        '%'
+      : '—';
+  const solPct =
+    state.startSol != null && state.startSol !== 0
+      ? (((state.sol - state.startSol) / state.startSol) * 100).toFixed(2) + '%'
+      : '—';
+  const usdcValue = state.usdc;
+  const solValue = state.sol * state.solPriceUsd;
+  const totalValue = usdcValue + solValue;
+  const totalPct =
+    state.startTotalValue != null && state.startTotalValue !== 0
+      ? (
+          ((totalValue - state.startTotalValue) / state.startTotalValue) *
+          100
+        ).toFixed(2) + '%'
+      : '—';
+  console.table([
+    {
+      Asset: state.quoteSymbol,
+      Amount: state.usdc.toFixed(4),
+      Value: `$${usdcValue.toFixed(2)}`,
+      '% changed': usdcPct,
+    },
+    {
+      Asset: 'SOL',
+      Amount: state.sol.toFixed(6),
+      Value: `$${solValue.toFixed(2)}`,
+      '% changed': solPct,
+    },
+    {
+      Asset: 'Total',
+      Amount: '—',
+      Value: `$${totalValue.toFixed(2)}`,
+      '% changed': totalPct,
+    },
+  ]);
+
+  console.log('Volume');
+  const inputAmount = `${state.amountToCheck} ${state.quoteSymbol}`;
+  const inputValue = `$${parseFloat(state.amountToCheck).toFixed(2)}`;
+  const inputEstNet = `$${state.bestNet.toFixed(4)}`;
+  const recommendAmount =
+    state.recommendVolume !== null
+      ? `${state.recommendVolume.toFixed(2)} ${state.quoteSymbol}`
+      : '—';
+  const recommendValue =
+    state.recommendVolume !== null
+      ? `$${state.recommendVolume.toFixed(2)}`
+      : '—';
+  console.table([
+    {
+      Volume: 'Input',
+      Amount: inputAmount,
+      Value: inputValue,
+      'Est Net Profit': inputEstNet,
+    },
+    {
+      Volume: 'Recommend',
+      Amount: recommendAmount,
+      Value: recommendValue,
+      'Est Net Profit': 'Break-even',
+    },
+  ]);
+
   if (state.orcaPairPrice !== null || state.raydiumPairPrice !== null) {
     const orcaNum =
       state.orcaPairPrice !== null ? parseFloat(state.orcaPairPrice) : null;
@@ -172,62 +256,19 @@ function render(state: DisplayState): void {
     if (strategyRows.length > 0) console.table(strategyRows);
   }
 
-  console.log('Balance');
-  const usdcPct =
-    state.startUsdc != null && state.startUsdc !== 0
-      ? (((state.usdc - state.startUsdc) / state.startUsdc) * 100).toFixed(2) +
-        '%'
-      : '—';
-  const solPct =
-    state.startSol != null && state.startSol !== 0
-      ? (((state.sol - state.startSol) / state.startSol) * 100).toFixed(2) + '%'
-      : '—';
-  const usdcValue = state.usdc;
-  const solValue = state.sol * state.solPriceUsd;
-  const totalValue = usdcValue + solValue;
-  const totalPct =
-    state.startTotalValue != null && state.startTotalValue !== 0
-      ? (
-          ((totalValue - state.startTotalValue) / state.startTotalValue) *
-          100
-        ).toFixed(2) + '%'
-      : '—';
-  console.table([
-    {
-      Asset: state.quoteSymbol,
-      Amount: state.usdc.toFixed(4),
-      Value: `$${usdcValue.toFixed(2)}`,
-      '% changed': usdcPct,
-    },
-    {
-      Asset: 'SOL',
-      Amount: state.sol.toFixed(6),
-      Value: `$${solValue.toFixed(2)}`,
-      '% changed': solPct,
-    },
-    {
-      Asset: 'Total',
-      Amount: '—',
-      Value: `$${totalValue.toFixed(2)}`,
-      '% changed': totalPct,
-    },
-  ]);
-
-  console.log('Volume');
-  const inputAmount = `${state.amountToCheck} ${state.quoteSymbol}`;
-  const inputValue = `$${parseFloat(state.amountToCheck).toFixed(2)}`;
-  const recommendAmount =
-    state.recommendVolume !== null
-      ? `${state.recommendVolume.toFixed(2)} ${state.quoteSymbol}`
-      : '—';
-  const recommendValue =
-    state.recommendVolume !== null
-      ? `$${state.recommendVolume.toFixed(2)}`
-      : '—';
-  console.table([
-    { Volume: 'Input', Amount: inputAmount, Value: inputValue },
-    { Volume: 'Recommend', Amount: recommendAmount, Value: recommendValue },
-  ]);
+  if (trades.length > 0) {
+    console.log('Total trade');
+    const lastTrades = trades.slice(-10);
+    const startNum = Math.max(1, trades.length - lastTrades.length + 1);
+    const tradeRows = lastTrades.map((t, i) => ({
+      '#': startNum + i,
+      Tx: t.txSignature.slice(0, 8) + '…' + t.txSignature.slice(-8),
+      'Input volume': t.inputVolume,
+      'Net profit': `$${t.netProfit.toFixed(4)}`,
+      Time: t.timestamp,
+    }));
+    console.table(tradeRows);
+  }
 
   console.log(`-----------------------------------------`);
 }
@@ -264,6 +305,7 @@ export function startTracking(params: TrackerParams): void {
   let startSol: number | null = null;
   let startTotalValue: number | null = null;
   let lastDisplayState: DisplayState | null = null;
+  const completedTrades: TradeRecord[] = [];
 
   async function evaluateStrategies(): Promise<void> {
     if (isSwapping) return;
@@ -332,6 +374,7 @@ export function startTracking(params: TrackerParams): void {
     if (recommendVolumeB !== null) recommendVolumes.push(recommendVolumeB);
     const recommendVolume =
       recommendVolumes.length > 0 ? Math.min(...recommendVolumes) : null;
+    const bestNet = Math.max(netProfitA ?? -Infinity, netProfitB ?? -Infinity);
 
     const displayState: DisplayState = {
       minProfitPercent,
@@ -349,6 +392,7 @@ export function startTracking(params: TrackerParams): void {
       outputLeg2A,
       outputLeg2B,
       recommendVolume,
+      bestNet,
       startOutputA,
       startOutputB,
       usdc: balance.usdc,
@@ -360,22 +404,28 @@ export function startTracking(params: TrackerParams): void {
       lastEvalTime: market.lastUpdate,
     };
     lastDisplayState = displayState;
-    render(displayState);
+    render(displayState, completedTrades);
 
-    const bestNet = Math.max(netProfitA ?? -Infinity, netProfitB ?? -Infinity);
     if (bestNet > minProfitThreshold) {
+      isSwapping = true;
       const preferB =
         netProfitB !== null &&
         (netProfitA === null || netProfitB >= netProfitA);
-      if (preferB) {
-        isSwapping = true;
-        await executeArbitrage('B', amountToCheck);
-        isSwapping = false;
-      } else if (netProfitA !== null) {
-        isSwapping = true;
-        await executeArbitrage('A', amountToCheck);
-        isSwapping = false;
+      const result = preferB
+        ? await executeArbitrage('B', amountToCheck)
+        : netProfitA !== null
+          ? await executeArbitrage('A', amountToCheck)
+          : undefined;
+      if (result) {
+        completedTrades.push({
+          txSignature: result.txSignature,
+          inputVolume: `${amountToCheck} ${quoteSymbol}`,
+          netProfit: result.netProfit,
+          timestamp: new Date().toISOString(),
+        });
+        if (lastDisplayState) render(lastDisplayState, completedTrades);
       }
+      isSwapping = false;
     }
   }
 
@@ -409,7 +459,7 @@ export function startTracking(params: TrackerParams): void {
     { commitment: 'processed' }
   );
   setInterval(() => {
-    if (lastDisplayState) render(lastDisplayState);
+    if (lastDisplayState) render(lastDisplayState, completedTrades);
   }, 1000);
   void updateOrca();
   void updateRaydium();

@@ -128,9 +128,9 @@ src/
 
 **Params – `GetGasEstSolParams`:**
 
-| Field         | Type         | Description        |
-| -------------- | ------------ | ------------------ |
-| `connection`  | `Connection` | Solana connection  |
+| Field        | Type         | Description       |
+| ------------ | ------------ | ----------------- |
+| `connection` | `Connection` | Solana connection |
 
 **Returns:** `Promise<number>` – estimated SOL for 2 txs (base fee + p75 priority fee × estimated CU per swap). On RPC failure or empty fees, returns `GAS_EST_SOL` from env (default `0.005`).
 
@@ -189,21 +189,21 @@ src/
 
 **Params – `TrackerParams`:**
 
-| Field              | Type                 | Description                                                |
-| ------------------ | -------------------- | ---------------------------------------------------------- |
-| `connection`       | `Connection`         | Solana connection (for `onAccountChange`)                  |
-| `orcaPoolAddress`  | `string`             | Orca pool to watch                                         |
-| `raydiumPoolId`    | `string`             | Raydium pool to watch                                      |
-| `getOrcaQuote`     | `GetOrcaQuote`       | Orca quote function from `createOrcaQuoter`                |
-| `getRaydiumQuote`  | `GetRaydiumQuote`    | Raydium quote function from `createRaydiumQuoter`          |
-| `executeArbitrage` | `ExecuteArbitrageFn` | Bound executor (direction + amountInQuote)                |
-| `amountToCheck`    | `string`             | Quote amount used for price check (e.g. `"1"`)             |
-| `profitThreshold`  | `number`             | Legacy spread % (e.g. `1.0`); execution uses min profit %  |
-| `quoteSymbol?`     | `string`             | Optional; used in logs (e.g. `"USDC"`)                     |
-| `baseSymbol?`      | `string`             | Optional; used in pair-price and logs (e.g. `"SKR"`)       |
-| `getGasCostUsd`    | `() => Promise<number>` | Returns current gas cost in USD (gas SOL × SOL price)   |
-| `minProfitPercent` | `number`             | Min profit as % of input to execute (e.g. `1` = 1%)        |
-| `getBalance`       | `() => Promise<BalanceSnapshot>` | Returns USDC, SOL, and SOL price for display        |
+| Field              | Type                             | Description                                               |
+| ------------------ | -------------------------------- | --------------------------------------------------------- |
+| `connection`       | `Connection`                     | Solana connection (for `onAccountChange`)                 |
+| `orcaPoolAddress`  | `string`                         | Orca pool to watch                                        |
+| `raydiumPoolId`    | `string`                         | Raydium pool to watch                                     |
+| `getOrcaQuote`     | `GetOrcaQuote`                   | Orca quote function from `createOrcaQuoter`               |
+| `getRaydiumQuote`  | `GetRaydiumQuote`                | Raydium quote function from `createRaydiumQuoter`         |
+| `executeArbitrage` | `ExecuteArbitrageFn`             | Bound executor (direction + amountInQuote)                |
+| `amountToCheck`    | `string`                         | Quote amount used for price check (e.g. `"1"`)            |
+| `profitThreshold`  | `number`                         | Legacy spread % (e.g. `1.0`); execution uses min profit % |
+| `quoteSymbol?`     | `string`                         | Optional; used in logs (e.g. `"USDC"`)                    |
+| `baseSymbol?`      | `string`                         | Optional; used in pair-price and logs (e.g. `"SKR"`)      |
+| `getGasCostUsd`    | `() => Promise<number>`          | Returns current gas cost in USD (gas SOL × SOL price)     |
+| `minProfitPercent` | `number`                         | Min profit as % of input to execute (e.g. `1` = 1%)       |
+| `getBalance`       | `() => Promise<BalanceSnapshot>` | Returns USDC, SOL, and SOL price for display              |
 
 **Exported type – `BalanceSnapshot`:** `{ usdc: number, sol: number, solPriceUsd: number }`.
 

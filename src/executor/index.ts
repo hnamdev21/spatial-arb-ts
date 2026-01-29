@@ -233,30 +233,41 @@ async function swapOrca(
   }
 }
 
+export type ExecuteArbitrageResult = {
+  txSignature: string;
+  netProfit: number;
+};
+
 export type ExecuteArbitrageFn = (
   direction: 'A' | 'B',
   amountInQuote: string
-) => Promise<void>;
+) => Promise<ExecuteArbitrageResult | undefined>;
 
 export async function executeArbitrage(
   params: ExecutorParams,
   direction: 'A' | 'B',
   amountInQuote: string
-): Promise<void> {
+): Promise<ExecuteArbitrageResult | undefined> {
   const { connection, wallet, quoteMint, quoteToken, baseToken } = params;
 
-  console.log(
-    `\n🚨 EXECUTING STRATEGY ${direction} with ${amountInQuote} ${quoteToken.symbol}`
-  );
+  // console.log(
+  //   `\n🚨 EXECUTING STRATEGY ${direction} with ${amountInQuote} ${quoteToken.symbol}`
+  // );
 
   const startQuote = await getQuoteBalance(connection, wallet, quoteMint);
-  console.log(`[Balance] Start: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
+  // console.log(`[Balance] Start: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
 
   try {
+    let lastTxSignature = '';
     if (direction === 'A') {
-      await swapRaydium(params, quoteToken, baseToken, amountInQuote);
+      lastTxSignature = await swapRaydium(
+        params,
+        quoteToken,
+        baseToken,
+        amountInQuote
+      );
 
-      await sleep(1000);
+      // await sleep(1000);
 
       const baseBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(
@@ -273,7 +284,7 @@ export async function executeArbitrage(
         baseBalance.value.uiAmount != null &&
         baseBalance.value.uiAmount > 0
       ) {
-        await swapOrca(
+        lastTxSignature = await swapOrca(
           params,
           baseToken,
           quoteToken,
@@ -281,9 +292,14 @@ export async function executeArbitrage(
         );
       }
     } else {
-      await swapOrca(params, quoteToken, baseToken, amountInQuote);
+      lastTxSignature = await swapOrca(
+        params,
+        quoteToken,
+        baseToken,
+        amountInQuote
+      );
 
-      await sleep(1000);
+      // await sleep(1000);
 
       const baseBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(
@@ -300,7 +316,7 @@ export async function executeArbitrage(
         baseBalance.value.uiAmount != null &&
         baseBalance.value.uiAmount > 0
       ) {
-        await swapRaydium(
+        lastTxSignature = await swapRaydium(
           params,
           baseToken,
           quoteToken,
@@ -309,28 +325,31 @@ export async function executeArbitrage(
       }
     }
 
-    await sleep(2000);
+    // await sleep(2000);
     const endQuote = await getQuoteBalance(connection, wallet, quoteMint);
     const profit = endQuote - startQuote;
-    const profitPercent = (profit / parseFloat(amountInQuote)) * 100;
+    // const profitPercent = (profit / parseFloat(amountInQuote)) * 100;
 
-    console.log(`\n=========================================`);
-    console.log(`✅ EXECUTION COMPLETED`);
-    console.log(`-----------------------------------------`);
-    console.log(`Start Balance: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
-    console.log(`End Balance:   ${endQuote.toFixed(6)} ${quoteToken.symbol}`);
-    console.log(`-----------------------------------------`);
-    if (profit > 0) {
-      console.log(
-        `💰 PROFIT:      +${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)`
-      );
-    } else {
-      console.log(
-        `📉 LOSS:        -${Math.abs(profit).toFixed(6)} (${profitPercent.toFixed(2)}%)`
-      );
-    }
-    console.log(`=========================================\n`);
+    // console.log(`\n=========================================`);
+    // console.log(`✅ EXECUTION COMPLETED`);
+    // console.log(`-----------------------------------------`);
+    // console.log(`Start Balance: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
+    // console.log(`End Balance:   ${endQuote.toFixed(6)} ${quoteToken.symbol}`);
+    // console.log(`-----------------------------------------`);
+    // if (profit > 0) {
+    //   console.log(
+    //     `💰 PROFIT:      +${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)`
+    //   );
+    // } else {
+    //   console.log(
+    //     `📉 LOSS:        -${Math.abs(profit).toFixed(6)} (${profitPercent.toFixed(2)}%)`
+    //   );
+    // }
+    // console.log(`=========================================\n`);
+
+    return { txSignature: lastTxSignature, netProfit: profit };
   } catch (e) {
     console.error('❌ Execution Stopped:', e);
+    return undefined;
   }
 }
