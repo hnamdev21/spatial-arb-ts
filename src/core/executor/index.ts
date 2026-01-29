@@ -30,6 +30,21 @@ export type ExecutorParams = {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const MAX_FAIL_REASON_LENGTH = 80;
+
+function toShortFailReason(raw: string): string {
+  const lower = raw.toLowerCase();
+  if (lower.includes('insufficient funds')) return 'Insufficient funds';
+  if (lower.includes('custom program error: 0x1'))
+    return 'Insufficient funds (0x1)';
+  const logErrorMatch = raw.match(/Program log: Error:\s*([^\n]+)/);
+  if (logErrorMatch?.[1])
+    return logErrorMatch[1].trim().slice(0, MAX_FAIL_REASON_LENGTH);
+  const firstLine = raw.split('\n')[0]?.trim() ?? raw;
+  if (firstLine.length <= MAX_FAIL_REASON_LENGTH) return firstLine;
+  return firstLine.slice(0, MAX_FAIL_REASON_LENGTH - 3) + '…';
+}
+
 async function getQuoteBalance(
   connection: Connection,
   wallet: Keypair,
@@ -218,21 +233,32 @@ async function swapOrca(
   }
 }
 
-export type ExecuteArbitrageResult = {
-  txSignature: string;
+export type ExecuteArbitrageResultSuccess = {
+  success: true;
+  leg1TxSignature: string;
+  leg2TxSignature: string;
   netProfit: number;
 };
+
+export type ExecuteArbitrageResultFailure = {
+  success: false;
+  error: string;
+};
+
+export type ExecuteArbitrageResult =
+  | ExecuteArbitrageResultSuccess
+  | ExecuteArbitrageResultFailure;
 
 export type ExecuteArbitrageFn = (
   direction: 'A' | 'B',
   amountInQuote: string
-) => Promise<ExecuteArbitrageResult | undefined>;
+) => Promise<ExecuteArbitrageResult>;
 
 export async function executeArbitrage(
   params: ExecutorParams,
   direction: 'A' | 'B',
   amountInQuote: string
-): Promise<ExecuteArbitrageResult | undefined> {
+): Promise<ExecuteArbitrageResult> {
   const { connection, wallet, quoteMint, quoteToken, baseToken } = params;
 
   // console.log(
@@ -243,16 +269,15 @@ export async function executeArbitrage(
   // console.log(`[Balance] Start: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
 
   try {
-    let lastTxSignature = '';
+    let leg1TxSignature = '';
+    let leg2TxSignature = '';
     if (direction === 'A') {
-      lastTxSignature = await swapRaydium(
+      leg1TxSignature = await swapRaydium(
         params,
         quoteToken,
         baseToken,
         amountInQuote
       );
-
-      // await sleep(1000);
 
       const baseBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(
@@ -261,15 +286,11 @@ export async function executeArbitrage(
         )
       );
 
-      // console.log(
-      //   `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Orca...`
-      // );
-
       if (
         baseBalance.value.uiAmount != null &&
         baseBalance.value.uiAmount > 0
       ) {
-        lastTxSignature = await swapOrca(
+        leg2TxSignature = await swapOrca(
           params,
           baseToken,
           quoteToken,
@@ -277,14 +298,12 @@ export async function executeArbitrage(
         );
       }
     } else {
-      lastTxSignature = await swapOrca(
+      leg1TxSignature = await swapOrca(
         params,
         quoteToken,
         baseToken,
         amountInQuote
       );
-
-      // await sleep(1000);
 
       const baseBalance = await connection.getTokenAccountBalance(
         await getAssociatedTokenAddress(
@@ -293,15 +312,11 @@ export async function executeArbitrage(
         )
       );
 
-      // console.log(
-      //   `[Arbitrage] Acquired ${baseBalance.value.uiAmount} ${baseToken.symbol}. Selling on Raydium...`
-      // );
-
       if (
         baseBalance.value.uiAmount != null &&
         baseBalance.value.uiAmount > 0
       ) {
-        lastTxSignature = await swapRaydium(
+        leg2TxSignature = await swapRaydium(
           params,
           baseToken,
           quoteToken,
@@ -310,31 +325,18 @@ export async function executeArbitrage(
       }
     }
 
-    // await sleep(2000);
     const endQuote = await getQuoteBalance(connection, wallet, quoteMint);
     const profit = endQuote - startQuote;
-    // const profitPercent = (profit / parseFloat(amountInQuote)) * 100;
 
-    // console.log(`\n=========================================`);
-    // console.log(`✅ EXECUTION COMPLETED`);
-    // console.log(`-----------------------------------------`);
-    // console.log(`Start Balance: ${startQuote.toFixed(6)} ${quoteToken.symbol}`);
-    // console.log(`End Balance:   ${endQuote.toFixed(6)} ${quoteToken.symbol}`);
-    // console.log(`-----------------------------------------`);
-    // if (profit > 0) {
-    //   console.log(
-    //     `💰 PROFIT:      +${profit.toFixed(6)} (+${profitPercent.toFixed(2)}%)`
-    //   );
-    // } else {
-    //   console.log(
-    //     `📉 LOSS:        -${Math.abs(profit).toFixed(6)} (${profitPercent.toFixed(2)}%)`
-    //   );
-    // }
-    // console.log(`=========================================\n`);
-
-    return { txSignature: lastTxSignature, netProfit: profit };
+    return {
+      success: true,
+      leg1TxSignature,
+      leg2TxSignature,
+      netProfit: profit,
+    };
   } catch (e) {
+    const rawMessage = e instanceof Error ? e.message : String(e);
     console.error('❌ Execution Stopped:', e);
-    return undefined;
+    return { success: false, error: toShortFailReason(rawMessage) };
   }
 }

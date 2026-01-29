@@ -64,9 +64,11 @@ export type TradeRecord = {
   txSignature: string;
   status: 'SUCCESS' | 'FAILED';
   strategy: 'A' | 'B';
+  leg?: 'BUY' | 'SELL';
   orderLabel: string;
   inputVolume: string;
-  netProfit: number;
+  netProfit: number | null;
+  failReason?: string;
   timestamp: string;
 };
 
@@ -217,34 +219,27 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
   }
   console.log(`-----------------------------------------`);
   if (state.netProfitA !== null || state.netProfitB !== null) {
-    const outA =
-      state.outputLeg2A !== null ? parseFloat(state.outputLeg2A) : null;
-    const outB =
-      state.outputLeg2B !== null ? parseFloat(state.outputLeg2B) : null;
-    const pctA =
-      state.startOutputA != null && outA !== null
-        ? (((outA - state.startOutputA) / state.startOutputA) * 100).toFixed(
-            2
-          ) + '%'
+    const inputUsdc = parseFloat(state.amountToCheck);
+    const pctNetA =
+      state.netProfitA !== null && inputUsdc > 0
+        ? ((state.netProfitA / inputUsdc) * 100).toFixed(2) + '%'
         : '—';
-    const pctB =
-      state.startOutputB != null && outB !== null
-        ? (((outB - state.startOutputB) / state.startOutputB) * 100).toFixed(
-            2
-          ) + '%'
+    const pctNetB =
+      state.netProfitB !== null && inputUsdc > 0
+        ? ((state.netProfitB / inputUsdc) * 100).toFixed(2) + '%'
         : '—';
     const strategyRows: Array<{
       Strategy: string;
       Output: string;
       Net: string;
-      '% changed': string;
+      '% net profit': string;
     }> = [];
     if (state.netProfitA !== null && state.outputLeg2A !== null) {
       strategyRows.push({
         Strategy: 'A (Buy Ray → Sell Orca)',
         Output: `$${Number(state.outputLeg2A).toFixed(4)}`,
         Net: `$${state.netProfitA.toFixed(4)}`,
-        '% changed': pctA,
+        '% net profit': pctNetA,
       });
     }
     if (state.netProfitB !== null && state.outputLeg2B !== null) {
@@ -252,7 +247,7 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
         Strategy: 'B (Buy Orca → Sell Ray)',
         Output: `$${Number(state.outputLeg2B).toFixed(4)}`,
         Net: `$${state.netProfitB.toFixed(4)}`,
-        '% changed': pctB,
+        '% net profit': pctNetB,
       });
     }
     if (strategyRows.length > 0) console.table(strategyRows);
@@ -268,7 +263,8 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
       Status: t.status,
       Order: t.orderLabel,
       'Input volume': t.inputVolume,
-      'Net profit': `$${t.netProfit.toFixed(4)}`,
+      'Net profit': t.netProfit != null ? `$${t.netProfit.toFixed(4)}` : '—',
+      'Fail reason': t.failReason ?? '—',
       Time: t.timestamp,
     }));
     console.table(tradeRows);
@@ -411,6 +407,7 @@ export function startTracking(params: TrackerParams): void {
     render(displayState, completedTrades);
 
     if (bestNet > minProfitThreshold) {
+      if (isSwapping) return;
       isSwapping = true;
       const preferB =
         netProfitB !== null &&
@@ -423,21 +420,67 @@ export function startTracking(params: TrackerParams): void {
       const result =
         strategy !== null
           ? await executeArbitrage(strategy, amountToCheck)
-          : undefined;
-      if (strategy !== null) {
-        const orderLabel =
-          strategy === 'A'
-            ? 'A (Buy Ray → Sell Orca)'
-            : 'B (Buy Orca → Sell Ray)';
-        completedTrades.push({
-          txSignature: result?.txSignature ?? '',
-          status: result ? 'SUCCESS' : 'FAILED',
-          strategy,
-          orderLabel,
-          inputVolume: `${amountToCheck} ${quoteSymbol}`,
-          netProfit: result?.netProfit ?? 0,
-          timestamp: new Date().toISOString(),
-        });
+          : null;
+      if (strategy !== null && result !== null) {
+        const success = result.success;
+        const timestamp = new Date().toISOString();
+        const inputVolume = `${amountToCheck} ${quoteSymbol}`;
+
+        if (success) {
+          const alreadyRecorded =
+            result.leg2TxSignature !== '' &&
+            completedTrades.some(
+              (t) => t.txSignature === result.leg2TxSignature
+            );
+          if (!alreadyRecorded) {
+            const orderBuy =
+              strategy === 'A'
+                ? 'Order 1: Buy Ray (USDC→Ray)'
+                : 'Order 1: Buy Orca (USDC→Orca)';
+            const orderSell =
+              strategy === 'A'
+                ? 'Order 2: Sell Orca (Ray→USDC)'
+                : 'Order 2: Sell Ray (Orca→USDC)';
+            if (result.leg1TxSignature) {
+              completedTrades.push({
+                txSignature: result.leg1TxSignature,
+                status: 'SUCCESS',
+                strategy,
+                leg: 'BUY',
+                orderLabel: orderBuy,
+                inputVolume,
+                netProfit: null,
+                timestamp,
+              });
+            }
+            if (result.leg2TxSignature) {
+              completedTrades.push({
+                txSignature: result.leg2TxSignature,
+                status: 'SUCCESS',
+                strategy,
+                leg: 'SELL',
+                orderLabel: orderSell,
+                inputVolume,
+                netProfit: result.netProfit,
+                timestamp,
+              });
+            }
+          }
+        } else {
+          completedTrades.push({
+            txSignature: '',
+            status: 'FAILED',
+            strategy,
+            orderLabel:
+              strategy === 'A'
+                ? 'A (Buy Ray → Sell Orca)'
+                : 'B (Buy Orca → Sell Ray)',
+            inputVolume,
+            netProfit: null,
+            ...(result.error ? { failReason: result.error } : {}),
+            timestamp,
+          });
+        }
         if (lastDisplayState) render(lastDisplayState, completedTrades);
       }
       isSwapping = false;

@@ -20,8 +20,8 @@ import {
 const RAYDIUM_POOL_ID =
   process.env.RAYDIUM_POOL_ID?.trim() ||
   'fchJDDYsnkX6dhY7MMjvNRmYiR7DMSYisKqT2HAZmqP';
-const AMOUNT_TO_CHECK = process.env.AMOUNT_TO_CHECK?.trim() || '53';
-const PROFIT_THRESHOLD = Number(process.env.PROFIT_THRESHOLD?.trim() || '0.5');
+const AMOUNT_TO_CHECK = process.env.AMOUNT_TO_CHECK?.trim() || '1';
+const PROFIT_THRESHOLD = Number(process.env.PROFIT_THRESHOLD?.trim() || '1');
 
 async function main(): Promise<void> {
   const getOrcaQuote = createOrcaQuoter({
