@@ -431,7 +431,7 @@ export function startTracking(params: TrackerParams): void {
 
   let orcaDebounceTimer: NodeJS.Timeout | null = null;
   let raydiumDebounceTimer: NodeJS.Timeout | null = null;
-  const DEBOUNCE_DELAY_MS = 300;
+  const DEBOUNCE_DELAY_MS = 1000;
 
   async function updateOrca(): Promise<void> {
     if (isSwapping) return;
