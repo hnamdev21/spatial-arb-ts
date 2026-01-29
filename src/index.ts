@@ -5,6 +5,7 @@ import type { BalanceSnapshot } from './core/tracker';
 import { createOrcaQuoter, createRaydiumQuoter } from './core/quoter';
 import { executeArbitrage } from './core/executor';
 import { getGasBreakdown } from './core/gas';
+import { getPoolFeeRates, poolFeeUsdFromRates } from './core/pool-fee';
 import { getSolPriceUsd } from './core/price';
 import {
   connection,
@@ -67,6 +68,17 @@ async function main(): Promise<void> {
     };
   };
 
+  const getPoolFeeUsd = async (amountUsdc: number): Promise<number> => {
+    const rates = await getPoolFeeRates({
+      connection,
+      wallet,
+      orcaPoolAddress: ORCA_POOL_ADDRESS,
+      baseMint: BASE_MINT,
+      quoteMint: QUOTE_MINT,
+    });
+    return poolFeeUsdFromRates(amountUsdc, rates);
+  };
+
   const getBalance = async (): Promise<BalanceSnapshot> => {
     let usdc = 0;
     try {
@@ -99,6 +111,7 @@ async function main(): Promise<void> {
     quoteSymbol: QUOTE_TOKEN.symbol,
     baseSymbol: BASE_TOKEN.symbol,
     getGasBreakdown: getGasBreakdownWithUsd,
+    getPoolFeeUsd,
     minProfitPercent: MIN_PROFIT_PERCENT,
     getBalance,
   });

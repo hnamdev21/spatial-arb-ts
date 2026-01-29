@@ -31,6 +31,7 @@ export type TrackerParams = {
   quoteSymbol?: string;
   baseSymbol?: string;
   getGasBreakdown: () => Promise<GasBreakdownWithUsd>;
+  getPoolFeeUsd: (amountUsdc: number) => Promise<number>;
   minProfitPercent: number;
   getBalance: () => Promise<BalanceSnapshot>;
 };
@@ -50,6 +51,7 @@ type DisplayState = {
   gasNetworkUsd: number;
   gasPriorityUsd: number;
   gasTotalUsd: number;
+  poolFeeUsd: number;
   amountToCheck: string;
   quoteSymbol: string;
   baseSymbol: string;
@@ -125,14 +127,28 @@ function render(state: DisplayState, trades: TradeRecord[]): void {
       'Value ($)': `$${state.gasPriorityUsd.toFixed(4)}`,
     },
     {
+      Fee: 'Pool',
+      'Amount (SOL)': '—',
+      'Value ($)':
+        state.poolFeeUsd > 0 ? `$${state.poolFeeUsd.toFixed(4)}` : '—',
+    },
+    {
       Fee: 'Exchange',
       'Amount (SOL)': '—',
       'Value ($)': '—',
     },
     {
-      Fee: 'Total',
+      Fee: 'Total (gas)',
       'Amount (SOL)': state.gasTotalSol.toFixed(6),
       'Value ($)': `$${state.gasTotalUsd.toFixed(4)}`,
+    },
+    {
+      Fee: 'Total (est.)',
+      'Amount (SOL)': '—',
+      'Value ($)':
+        state.poolFeeUsd > 0
+          ? `$${(state.gasTotalUsd + state.poolFeeUsd).toFixed(4)}`
+          : `$${state.gasTotalUsd.toFixed(4)}`,
     },
   ]);
 
@@ -319,6 +335,7 @@ export function startTracking(params: TrackerParams): void {
     quoteSymbol = 'quote',
     baseSymbol = 'BASE',
     getGasBreakdown,
+    getPoolFeeUsd,
     minProfitPercent,
     getBalance,
   } = params;
@@ -344,9 +361,10 @@ export function startTracking(params: TrackerParams): void {
     if (isSwapping) return;
 
     const inputUsdc = parseFloat(amountToCheck);
-    const [gasBreakdown, balance] = await Promise.all([
+    const [gasBreakdown, balance, poolFeeUsd] = await Promise.all([
       getGasBreakdown(),
       getBalance(),
+      getPoolFeeUsd(inputUsdc),
     ]);
     const gasTotalUsd = gasBreakdown.totalUsd;
     if (startUsdc === null) startUsdc = balance.usdc;
@@ -419,6 +437,7 @@ export function startTracking(params: TrackerParams): void {
       gasNetworkUsd: gasBreakdown.networkUsd,
       gasPriorityUsd: gasBreakdown.priorityUsd,
       gasTotalUsd: gasBreakdown.totalUsd,
+      poolFeeUsd,
       amountToCheck,
       quoteSymbol,
       baseSymbol,
